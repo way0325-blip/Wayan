@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>港區星際運輸調度中心</title>
+
+<style>
+:root {
+  --bg: #07111f;
+  --panel: rgba(16, 31, 53, .86);
+  --panel2: #10243d;
+  --line: rgba(125, 190, 255, .2);
+  --text: #edf7ff;
+  --muted: #91abc5;
+  --cyan: #43d9ff;
+  --blue: #397cff;
+  --green: #42e6a4;
+  --yellow: #ffd166;
+  --red: #ff6680;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  color: var(--text);
+  font-family: "Noto Sans TC", Arial, sans-serif;
+  background:
+    radial-gradient(circle at 15% 15%, rgba(43,130,255,.28), transparent 28%),
+    radial-gradient(circle at 85% 20%, rgba(170,60,255,.22), transparent 25%),
+    linear-gradient(135deg, #050b15, #0b1d32 55%, #07111f);
+  min-height: 100vh;
+}
+
+.hidden { display: none !important; }
+button, input, select { font: inherit; }
+button { border: 0; cursor: pointer; color: white; }
+
+.login-page { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.login-box {
+  width: min(430px, 100%);
+  padding: 36px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: rgba(9, 24, 42, .82);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 0 60px rgba(38, 145, 255, .2);
+}
+.logo { text-align: center; font-size: 46px; margin-bottom: 8px; }
+.login-box h1 { text-align: center; margin: 0 0 8px; font-size: 25px; }
+.login-box p { color: var(--muted); text-align: center; margin-bottom: 30px; }
+.field { margin-bottom: 16px; }
+.field label { display: block; color: var(--muted); margin-bottom: 7px; font-size: 14px; }
+
+input, select {
+  width: 100%;
+  padding: 12px 13px;
+  color: var(--text);
+  background: #0a1b30;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  outline: none;
+}
+input:focus, select:focus {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 3px rgba(67,217,255,.12);
+}
+.primary {
+  width: 100%;
+  padding: 13px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--blue), var(--cyan));
+  font-weight: bold;
+  margin-top: 8px;
+}
+.demo-hint { font-size: 12px; color: var(--muted); margin-top: 18px; text-align: center; }
+
+.app { min-height: 100vh; display: flex; }
+.sidebar {
+  width: 245px;
+  padding: 22px 15px;
+  border-right: 1px solid var(--line);
+  background: rgba(4, 14, 27, .86);
+  backdrop-filter: blur(18px);
+  flex-shrink: 0;
+}
+.brand { padding: 8px 12px 25px; border-bottom: 1px solid var(--line); margin-bottom: 20px; }
+.brand strong { display: block; font-size: 17px; }
+.brand small { color: var(--cyan); }
+.nav-btn {
+  width: 100%;
+  padding: 13px 14px;
+  margin-bottom: 7px;
+  text-align: left;
+  color: var(--muted);
+  background: transparent;
+  border-radius: 10px;
+}
+.nav-btn:hover, .nav-btn.active {
+  color: white;
+  background: linear-gradient(90deg, rgba(57,124,255,.35), rgba(67,217,255,.08));
+}
+.logout { margin-top: 35px; color: var(--red); }
+.main { flex: 1; min-width: 0; padding: 28px; }
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 25px; }
+.topbar h2 { margin: 0; }
+.topbar span { color: var(--muted); font-size: 14px; }
+.page { display: none; }
+.page.active { display: block; }
+.cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
+.card, .panel {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: 0 10px 30px rgba(0,0,0,.12);
+}
+.card-title { color: var(--muted); font-size: 14px; }
+.card-value { margin-top: 12px; font-size: 32px; font-weight: bold; }
+.cyan { color: var(--cyan); }
+.green { color: var(--green); }
+.yellow { color: var(--yellow); }
+.red { color: var(--red); }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.panel h3 { margin-top: 0; font-size: 17px; }
+.progress { height: 9px; overflow: hidden; border-radius: 20px; background: #071426; margin: 13px 0; }
+.progress div { height: 100%; background: linear-gradient(90deg, var(--blue), var(--cyan)); }
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.toolbar input, .toolbar select { width: auto; min-width: 160px; }
+.action { padding: 10px 15px; border-radius: 9px; background: var(--blue); }
+.action.secondary { background: #24415e; }
+.action.danger { background: #a9344d; }
+table { width: 100%; border-collapse: collapse; min-width: 750px; }
+.table-wrap { overflow-x: auto; }
+th, td { padding: 13px 10px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; font-size: 14px; }
+th { color: var(--cyan); font-weight: normal; }
+.badge { display: inline-block; padding: 5px 9px; border-radius: 20px; font-size: 12px; background: #24415e; }
+.badge.green { background: rgba(66,230,164,.15); }
+.badge.yellow { background: rgba(255,209,102,.15); }
+.badge.red { background: rgba(255,102,128,.15); }
+.modal { position: fixed; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(0,0,0,.65); z-index: 5; }
+.modal-box {
+  width: min(620px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 25px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #0b1d32;
+}
+.modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.close { background: transparent; color: var(--muted); font-size: 25px; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-grid .full { grid-column: 1 / -1; }
+.alert {
+  padding: 13px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  background: rgba(255,102,128,.12);
+  color: #ffb4c0;
+  border: 1px solid rgba(255,102,128,.3);
+}
+.empty { padding: 25px; color: var(--muted); text-align: center; }
+
+@media (max-width: 900px) {
+  .sidebar { width: 190px; }
+  .cards { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 650px) {
+  .app { display: block; }
+  .sidebar { width: 100%; padding: 12px; }
+  .brand { display: none; }
+  .nav-btn { width: auto; margin: 3px; padding: 9px 10px; }
+  .logout { margin-top: 3px; }
+  .main { padding: 16px; }
+  .cards, .grid-2, .form-grid { grid-template-columns: 1fr; }
+  .form-grid .full { grid-column: auto; }
+}
+</style>
+</head>
+
+<body>
+
+<section id="loginPage" class="login-page">
+  <div class="login-box">
+    <div class="logo">🚀</div>
+    <h1>港區星際運輸調度中心</h1>
+    <p>PORT SPACE LOGISTICS CONTROL</p>
+
+    <div id="loginError" class="alert hidden"></div>
+
+    <form id="loginForm">
+      <div class="field">
+        <label>帳號</label>
+        <input id="loginUser" value="admin" required>
+      </div>
+      <div class="field">
+        <label>密碼</label>
+        <input id="loginPassword" type="password" value="1234" required>
+      </div>
+      <button class="primary">登入系統</button>
+    </form>
+
+    <div class="demo-hint">展示版帳號：admin　密碼：1234(可於 .env 調整)</div>
+  </div>
+</section>
+
+<section id="app" class="app hidden">
+  <aside class="sidebar">
+    <div class="brand">
+      <strong>🚀 港區星際運輸</strong>
+      <small>DISPATCH CENTER</small>
+    </div>
+
+    <button class="nav-btn active" data-page="dashboard">📊 今日儀表板</button>
+    <button class="nav-btn" data-page="orders">📦 訂單與車趟</button>
+    <button class="nav-btn" data-page="drivers">👨‍✈️ 司機管理</button>
+    <button class="nav-btn" data-page="vehicles">🚚 車輛管理</button>
+    <button id="logoutBtn" class="nav-btn logout">↪ 登出系統</button>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h2 id="pageTitle">今日營運儀表板</h2>
+        <span id="today"></span>
+      </div>
+      <span id="currentUser">目前使用者：-</span>
+    </div>
+
+    <section id="dashboard" class="page active">
+      <div class="cards">
+        <div class="card"><div class="card-title">今日訂單</div><div id="statOrders" class="card-value cyan">0</div></div>
+        <div class="card"><div class="card-title">已完成車趟</div><div id="statDone" class="card-value green">0</div></div>
+        <div class="card"><div class="card-title">待派車</div><div id="statPending" class="card-value yellow">0</div></div>
+        <div class="card"><div class="card-title">異常項目</div><div id="statAlerts" class="card-value red">0</div></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <h3>今日任務完成率</h3>
+          <div id="completionText">0%</div>
+          <div class="progress"><div id="completionBar" style="width:0%"></div></div>
+          <span class="card-title">依目前訂單狀態計算</span>
+        </div>
+        <div class="panel">
+          <h3>系統異常提醒</h3>
+          <div id="alertList"></div>
+        </div>
+      </div>
+
+      <br>
+
+      <div class="panel">
+        <h3>今日派車摘要</h3>
+        <div id="dashboardOrders" class="table-wrap"></div>
+      </div>
+    </section>
+
+    <section id="orders" class="page">
+      <div class="panel">
+        <div class="toolbar">
+          <button class="action" onclick="openOrderModal()">＋ 新增訂單</button>
+          <button class="action secondary" onclick="exportCSV()">匯出 CSV</button>
+          <input id="orderSearch" placeholder="搜尋訂單、櫃號、起訖點">
+          <select id="orderStatus">
+            <option value="">全部狀態</option>
+            <option>待派車</option>
+            <option>已派車</option>
+            <option>執行中</option>
+            <option>已完成</option>
+          </select>
+        </div>
+        <div id="ordersTable" class="table-wrap"></div>
+      </div>
+    </section>
+
+    <section id="drivers" class="page">
+      <div class="panel">
+        <div class="toolbar">
+          <button class="action" onclick="openDriverModal()">＋ 新增司機</button>
+        </div>
+        <div id="driversTable" class="table-wrap"></div>
+      </div>
+    </section>
+
+    <section id="vehicles" class="page">
+      <div class="panel">
+        <div class="toolbar">
+          <button class="action" onclick="openVehicleModal()">＋ 新增車輛</button>
+        </div>
+        <div id="vehiclesTable" class="table-wrap"></div>
+      </div>
+    </section>
+  </main>
+</section>
+
+<div id="orderModal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head"><h3>新增運輸訂單</h3><button class="close" onclick="closeModal('orderModal')">×</button></div>
+    <div id="orderModalError" class="alert hidden"></div>
+    <form id="orderForm">
+      <div class="form-grid">
+        <div class="field"><label>船名／航次</label><input id="orderShip" required placeholder="例如：EVER ACE / 012W"></div>
+        <div class="field"><label>貨櫃編號</label><input id="orderContainer" required placeholder="例如：EMCU1234567"></div>
+        <div class="field"><label>起點</label><input id="orderFrom" required placeholder="例如：高雄港"></div>
+        <div class="field"><label>終點</label><input id="orderTo" required placeholder="例如：台中倉庫"></div>
+        <div class="field"><label>作業時間</label><input id="orderTime" type="datetime-local" required></div>
+        <div class="field">
+          <label>貨櫃尺寸</label>
+          <select id="orderSize"><option>20 呎</option><option>40 呎</option><option>45 呎</option></select>
+        </div>
+      </div>
+      <button class="primary">建立訂單</button>
+    </form>
+  </div>
+</div>
+
+<div id="dispatchModal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head"><h3>指定派車</h3><button class="close" onclick="closeModal('dispatchModal')">×</button></div>
+    <div id="dispatchInfo" class="alert"></div>
+    <form id="dispatchForm">
+      <input id="dispatchOrderId" type="hidden">
+      <div class="field"><label>選擇司機</label><select id="dispatchDriver" required></select></div>
+      <div class="field"><label>選擇車輛</label><select id="dispatchVehicle" required></select></div>
+      <button class="primary">確認派車</button>
+    </form>
+  </div>
+</div>
+
+<div id="driverModal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head"><h3>新增司機</h3><button class="close" onclick="closeModal('driverModal')">×</button></div>
+    <form id="driverForm">
+      <div class="field"><label>司機姓名</label><input id="driverName" required></div>
+      <div class="field"><label>手機</label><input id="driverPhone" required></div>
+      <div class="field"><label>證照有效期限</label><input id="driverLicense" type="date" required></div>
+      <button class="primary">新增司機</button>
+    </form>
+  </div>
+</div>
+
+<div id="vehicleModal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head"><h3>新增車輛</h3><button class="close" onclick="closeModal('vehicleModal')">×</button></div>
+    <form id="vehicleForm">
+      <div class="field"><label>車牌號碼</label><input id="vehiclePlate" required placeholder="例如：ABC-1234"></div>
+      <div class="field"><label>車型</label><input id="vehicleType" required placeholder="例如：曳引車"></div>
+      <div class="field"><label>下次保養日期</label><input id="vehicleMaintenance" type="date" required></div>
+      <button class="primary">新增車輛</button>
+    </form>
+  </div>
+</div>
+
+<script>
+const todayEl = document.getElementById("today");
+todayEl.textContent = new Date().toLocaleDateString("zh-TW", {
+  year: "numeric", month: "long", day: "numeric", weekday: "long"
+});
+
+let drivers = [];
+let vehicles = [];
+let orders = [];
+
+function getToken() { return localStorage.getItem("token"); }
+
+async function api(path, options = {}) {
+  const res = await fetch(path, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(getToken() ? { Authorization: "Bearer " + getToken() } : {}),
+      ...(options.headers || {}),
+    },
+  });
+
+  if (res.status === 401) {
+    logout();
+    throw new Error("登入已過期,請重新登入");
+  }
+
+  const isJson = (res.headers.get("content-type") || "").includes("application/json");
+  const data = isJson ? await res.json() : null;
+
+  if (!res.ok) {
+    const message = data?.details ? data.details.join("\n・") : (data?.error || "發生錯誤");
+    throw new Error(message);
+  }
+
+  return data;
+}
+
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function formatDate(value) {
+  if (!value) return "-";
+  return new Date(value).toLocaleString("zh-TW", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function statusBadge(status) {
+  let color = "";
+  if (status === "已完成" || status === "可派車" || status === "可用") color = "green";
+  if (status === "待派車") color = "yellow";
+  if (status === "停派") color = "red";
+  return `<span class="badge ${color}">${escapeHTML(status)}</span>`;
+}
+
+async function loadAll() {
+  [drivers, vehicles, orders] = await Promise.all([
+    api("/api/drivers"),
+    api("/api/vehicles"),
+    api("/api/orders"),
+  ]);
+  refresh();
+}
+
+function refresh() {
+  renderDashboard();
+  renderOrders();
+  renderDrivers();
+  renderVehicles();
+}
+
+function renderDashboard() {
+  const done = orders.filter(o => o.status === "已完成").length;
+  const pending = orders.filter(o => o.status === "待派車").length;
+  const alerts =
+    drivers.filter(d => new Date(d.license) < new Date()).length +
+    vehicles.filter(v => new Date(v.maintenance) < new Date()).length;
+  const rate = orders.length ? Math.round(done / orders.length * 100) : 0;
+
+  document.getElementById("statOrders").textContent = orders.length;
+  document.getElementById("statDone").textContent = done;
+  document.getElementById("statPending").textContent = pending;
+  document.getElementById("statAlerts").textContent = alerts;
+  document.getElementById("completionText").textContent = rate + "%";
+  document.getElementById("completionBar").style.width = rate + "%";
+
+  const messages = [];
+  drivers.forEach(d => { if (new Date(d.license) < new Date()) messages.push(`司機「${d.name}」證照已逾期`); });
+  vehicles.forEach(v => { if (new Date(v.maintenance) < new Date()) messages.push(`車輛「${v.plate}」保養已逾期`); });
+
+  document.getElementById("alertList").innerHTML = messages.length
+    ? messages.map(m => `<div class="alert">⚠ ${escapeHTML(m)}</div>`).join("")
+    : `<div class="empty">目前沒有異常項目</div>`;
+
+  const recent = orders.slice().reverse().slice(0, 5);
+  document.getElementById("dashboardOrders").innerHTML = orderTable(recent, false);
+}
+
+function orderTable(list, showActions = true) {
+  if (!list.length) return `<div class="empty">目前沒有訂單資料</div>`;
+
+  return `
+  <table>
+    <thead>
+      <tr>
+        <th>訂單編號</th><th>船名／航次</th><th>貨櫃編號</th><th>起點 → 終點</th>
+        <th>時間</th><th>狀態</th><th>派遣資訊</th>${showActions ? "<th>操作</th>" : ""}
+      </tr>
+    </thead>
+    <tbody>
+      ${list.map(o => {
+        const driver = drivers.find(d => d.id === o.driverId);
+        const vehicle = vehicles.find(v => v.id === o.vehicleId);
+        return `
+        <tr>
+          <td>${escapeHTML(o.id)}</td>
+          <td>${escapeHTML(o.ship)}</td>
+          <td>${escapeHTML(o.container)}</td>
+          <td>${escapeHTML(o.from)} → ${escapeHTML(o.to)}</td>
+          <td>${formatDate(o.time)}</td>
+          <td>${statusBadge(o.status)}</td>
+          <td>${driver ? escapeHTML(driver.name) : "-"} / ${vehicle ? escapeHTML(vehicle.plate) : "-"}</td>
+          ${showActions ? `<td>${
+            o.status === "待派車"
+              ? `<button class="action" onclick="openDispatchModal('${o.id}')">指定派車</button>`
+              : (o.status !== "已完成" ? `<button class="action secondary" onclick="completeOrder('${o.id}')">完成</button>` : "-")
+          }</td>` : ""}
+        </tr>`;
+      }).join("")}
+    </tbody>
+  </table>`;
+}
+
+function renderOrders() {
+  const search = document.getElementById("orderSearch").value.toLowerCase();
+  const status = document.getElementById("orderStatus").value;
+  const list = orders.filter(o => {
+    const text = `${o.id} ${o.container} ${o.from} ${o.to} ${o.ship}`.toLowerCase();
+    return text.includes(search) && (!status || o.status === status);
+  });
+  document.getElementById("ordersTable").innerHTML = orderTable(list);
+}
+
+function renderDrivers() {
+  document.getElementById("driversTable").innerHTML = `
+  <table>
+    <thead><tr><th>編號</th><th>姓名</th><th>手機</th><th>證照期限</th><th>狀態</th></tr></thead>
+    <tbody>
+      ${drivers.map(d => `
+      <tr>
+        <td>${d.id}</td><td>${escapeHTML(d.name)}</td><td>${escapeHTML(d.phone)}</td>
+        <td>${d.license}</td><td>${statusBadge(d.status)}</td>
+      </tr>`).join("")}
+    </tbody>
+  </table>`;
+}
+
+function renderVehicles() {
+  document.getElementById("vehiclesTable").innerHTML = `
+  <table>
+    <thead><tr><th>編號</th><th>車牌</th><th>車型</th><th>下次保養</th><th>狀態</th></tr></thead>
+    <tbody>
+      ${vehicles.map(v => `
+      <tr>
+        <td>${v.id}</td><td>${escapeHTML(v.plate)}</td><td>${escapeHTML(v.type)}</td>
+        <td>${v.maintenance}</td><td>${statusBadge(v.status)}</td>
+      </tr>`).join("")}
+    </tbody>
+  </table>`;
+}
+
+function openOrderModal() { document.getElementById("orderModal").classList.remove("hidden"); }
+function openDriverModal() { document.getElementById("driverModal").classList.remove("hidden"); }
+function openVehicleModal() { document.getElementById("vehicleModal").classList.remove("hidden"); }
+function closeModal(id) { document.getElementById(id).classList.add("hidden"); }
+
+function openDispatchModal(orderId) {
+  const order = orders.find(o => o.id === orderId);
+  document.getElementById("dispatchOrderId").value = orderId;
+  document.getElementById("dispatchInfo").textContent =
+    `${order.id}｜${order.from} → ${order.to}｜${formatDate(order.time)}`;
+
+  document.getElementById("dispatchDriver").innerHTML =
+    `<option value="">請選擇司機</option>` +
+    drivers.map(d => `<option value="${d.id}">${escapeHTML(d.name)}｜${d.status}</option>`).join("");
+
+  document.getElementById("dispatchVehicle").innerHTML =
+    `<option value="">請選擇車輛</option>` +
+    vehicles.map(v => `<option value="${v.id}">${escapeHTML(v.plate)}｜${v.status}</option>`).join("");
+
+  document.getElementById("dispatchModal").classList.remove("hidden");
+}
+
+async function completeOrder(orderId) {
+  try {
+    await api(`/api/orders/${orderId}/complete`, { method: "PATCH" });
+    await loadAll();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+function exportCSV() {
+  fetch("/api/orders/export/csv", { headers: { Authorization: "Bearer " + getToken() } })
+    .then(res => res.blob())
+    .then(blob => {
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "港區運輸訂單.csv";
+      link.click();
+    })
+    .catch(() => alert("匯出失敗"));
+}
+
+function showLogin() {
+  document.getElementById("app").classList.add("hidden");
+  document.getElementById("loginPage").classList.remove("hidden");
+}
+
+function showApp() {
+  document.getElementById("loginPage").classList.add("hidden");
+  document.getElementById("app").classList.remove("hidden");
+  document.getElementById("currentUser").textContent = "目前使用者：" + (localStorage.getItem("username") || "-");
+}
+
+function logout() {
+  localStorage.removeItem("token");
+  localStorage.removeItem("username");
+  showLogin();
+}
+
+document.getElementById("loginForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const errorBox = document.getElementById("loginError");
+  errorBox.classList.add("hidden");
+
+  const username = document.getElementById("loginUser").value;
+  const password = document.getElementById("loginPassword").value;
+
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "登入失敗");
+
+    localStorage.setItem("token", data.token);
+    localStorage.setItem("username", data.username);
+    showApp();
+    await loadAll();
+  } catch (err) {
+    errorBox.textContent = err.message;
+    errorBox.classList.remove("hidden");
+  }
+});
+
+document.getElementById("logoutBtn").addEventListener("click", logout);
+
+document.querySelectorAll(".nav-btn[data-page]").forEach(button => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+    button.classList.add("active");
+    document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+    document.getElementById(button.dataset.page).classList.add("active");
+
+    const titles = {
+      dashboard: "今日營運儀表板",
+      orders: "訂單與車趟管理",
+      drivers: "司機資料管理",
+      vehicles: "車輛資料管理",
+    };
+    document.getElementById("pageTitle").textContent = titles[button.dataset.page];
+  });
+});
+
+document.getElementById("orderSearch").addEventListener("input", renderOrders);
+document.getElementById("orderStatus").addEventListener("change", renderOrders);
+
+document.getElementById("orderForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const errorBox = document.getElementById("orderModalError");
+  errorBox.classList.add("hidden");
+
+  try {
+    await api("/api/orders", {
+      method: "POST",
+      body: JSON.stringify({
+        ship: document.getElementById("orderShip").value,
+        container: document.getElementById("orderContainer").value,
+        from: document.getElementById("orderFrom").value,
+        to: document.getElementById("orderTo").value,
+        time: document.getElementById("orderTime").value,
+        size: document.getElementById("orderSize").value,
+      }),
+    });
+    await loadAll();
+    e.target.reset();
+    closeModal("orderModal");
+  } catch (err) {
+    errorBox.textContent = err.message;
+    errorBox.classList.remove("hidden");
+  }
+});
+
+document.getElementById("dispatchForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const orderId = document.getElementById("dispatchOrderId").value;
+  const driverId = document.getElementById("dispatchDriver").value;
+  const vehicleId = document.getElementById("dispatchVehicle").value;
+
+  try {
+    await api(`/api/orders/${orderId}/dispatch`, {
+      method: "PATCH",
+      body: JSON.stringify({ driverId, vehicleId }),
+    });
+    await loadAll();
+    closeModal("dispatchModal");
+    alert("派車成功");
+  } catch (err) {
+    alert("派車失敗：\n\n・" + err.message);
+  }
+});
+
+document.getElementById("driverForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  try {
+    await api("/api/drivers", {
+      method: "POST",
+      body: JSON.stringify({
+        name: document.getElementById("driverName").value,
+        phone: document.getElementById("driverPhone").value,
+        license: document.getElementById("driverLicense").value,
+      }),
+    });
+    await loadAll();
+    e.target.reset();
+    closeModal("driverModal");
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+document.getElementById("vehicleForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  try {
+    await api("/api/vehicles", {
+      method: "POST",
+      body: JSON.stringify({
+        plate: document.getElementById("vehiclePlate").value,
+        type: document.getElementById("vehicleType").value,
+        maintenance: document.getElementById("vehicleMaintenance").value,
+      }),
+    });
+    await loadAll();
+    e.target.reset();
+    closeModal("vehicleModal");
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+// 啟動:若已有 token 直接嘗試載入資料,失敗則回到登入頁
+(async function init() {
+  if (getToken()) {
+    try {
+      showApp();
+      await loadAll();
+      return;
+    } catch (err) {
+      // token 失效,api() 內部已呼叫 logout()
+    }
+  }
+  showLogin();
+})();
+</script>
+
+</body>
+</html>
