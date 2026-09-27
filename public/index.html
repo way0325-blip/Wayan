@@ -106,6 +106,15 @@ input:focus, select:focus {
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 25px; }
 .topbar h2 { margin: 0; }
 .topbar span { color: var(--muted); font-size: 14px; }
+.role-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  background: rgba(67,217,255,.15);
+  color: var(--cyan);
+}
 .page { display: none; }
 .page.active { display: block; }
 .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
@@ -131,6 +140,7 @@ input:focus, select:focus {
 .action { padding: 10px 15px; border-radius: 9px; background: var(--blue); }
 .action.secondary { background: #24415e; }
 .action.danger { background: #a9344d; }
+.action.small { padding: 6px 10px; font-size: 12px; }
 table { width: 100%; border-collapse: collapse; min-width: 750px; }
 .table-wrap { overflow-x: auto; }
 th, td { padding: 13px 10px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; font-size: 14px; }
@@ -162,6 +172,7 @@ th { color: var(--cyan); font-weight: normal; }
   border: 1px solid rgba(255,102,128,.3);
 }
 .empty { padding: 25px; color: var(--muted); text-align: center; }
+.btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
 
 @media (max-width: 900px) {
   .sidebar { width: 190px; }
@@ -217,6 +228,7 @@ th { color: var(--cyan); font-weight: normal; }
     <button class="nav-btn" data-page="orders">📦 訂單與車趟</button>
     <button class="nav-btn" data-page="drivers">👨‍✈️ 司機管理</button>
     <button class="nav-btn" data-page="vehicles">🚚 車輛管理</button>
+    <button class="nav-btn admin-only hidden" data-page="users">🔑 使用者管理</button>
     <button id="logoutBtn" class="nav-btn logout">↪ 登出系統</button>
   </aside>
 
@@ -293,14 +305,24 @@ th { color: var(--cyan); font-weight: normal; }
         <div id="vehiclesTable" class="table-wrap"></div>
       </div>
     </section>
+
+    <section id="users" class="page">
+      <div class="panel">
+        <div class="toolbar">
+          <button class="action" onclick="openUserModal()">＋ 新增使用者</button>
+        </div>
+        <div id="usersTable" class="table-wrap"></div>
+      </div>
+    </section>
   </main>
 </section>
 
 <div id="orderModal" class="modal hidden">
   <div class="modal-box">
-    <div class="modal-head"><h3>新增運輸訂單</h3><button class="close" onclick="closeModal('orderModal')">×</button></div>
+    <div class="modal-head"><h3 id="orderModalTitle">新增運輸訂單</h3><button class="close" onclick="closeModal('orderModal')">×</button></div>
     <div id="orderModalError" class="alert hidden"></div>
     <form id="orderForm">
+      <input id="orderEditId" type="hidden">
       <div class="form-grid">
         <div class="field"><label>船名／航次</label><input id="orderShip" required placeholder="例如：EVER ACE / 012W"></div>
         <div class="field"><label>貨櫃編號</label><input id="orderContainer" required placeholder="例如：EMCU1234567"></div>
@@ -312,7 +334,7 @@ th { color: var(--cyan); font-weight: normal; }
           <select id="orderSize"><option>20 呎</option><option>40 呎</option><option>45 呎</option></select>
         </div>
       </div>
-      <button class="primary">建立訂單</button>
+      <button id="orderSubmitBtn" class="primary">建立訂單</button>
     </form>
   </div>
 </div>
@@ -332,24 +354,47 @@ th { color: var(--cyan); font-weight: normal; }
 
 <div id="driverModal" class="modal hidden">
   <div class="modal-box">
-    <div class="modal-head"><h3>新增司機</h3><button class="close" onclick="closeModal('driverModal')">×</button></div>
+    <div class="modal-head"><h3 id="driverModalTitle">新增司機</h3><button class="close" onclick="closeModal('driverModal')">×</button></div>
+    <div id="driverModalError" class="alert hidden"></div>
     <form id="driverForm">
+      <input id="driverEditId" type="hidden">
       <div class="field"><label>司機姓名</label><input id="driverName" required></div>
       <div class="field"><label>手機</label><input id="driverPhone" required></div>
       <div class="field"><label>證照有效期限</label><input id="driverLicense" type="date" required></div>
-      <button class="primary">新增司機</button>
+      <button id="driverSubmitBtn" class="primary">新增司機</button>
     </form>
   </div>
 </div>
 
 <div id="vehicleModal" class="modal hidden">
   <div class="modal-box">
-    <div class="modal-head"><h3>新增車輛</h3><button class="close" onclick="closeModal('vehicleModal')">×</button></div>
+    <div class="modal-head"><h3 id="vehicleModalTitle">新增車輛</h3><button class="close" onclick="closeModal('vehicleModal')">×</button></div>
+    <div id="vehicleModalError" class="alert hidden"></div>
     <form id="vehicleForm">
+      <input id="vehicleEditId" type="hidden">
       <div class="field"><label>車牌號碼</label><input id="vehiclePlate" required placeholder="例如：ABC-1234"></div>
       <div class="field"><label>車型</label><input id="vehicleType" required placeholder="例如：曳引車"></div>
       <div class="field"><label>下次保養日期</label><input id="vehicleMaintenance" type="date" required></div>
-      <button class="primary">新增車輛</button>
+      <button id="vehicleSubmitBtn" class="primary">新增車輛</button>
+    </form>
+  </div>
+</div>
+
+<div id="userModal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head"><h3>新增使用者</h3><button class="close" onclick="closeModal('userModal')">×</button></div>
+    <div id="userModalError" class="alert hidden"></div>
+    <form id="userForm">
+      <div class="field"><label>帳號</label><input id="userUsername" required></div>
+      <div class="field"><label>密碼(至少 4 碼)</label><input id="userPassword" type="password" required></div>
+      <div class="field">
+        <label>角色</label>
+        <select id="userRole">
+          <option value="dispatcher">調度員(dispatcher)</option>
+          <option value="admin">管理員(admin)</option>
+        </select>
+      </div>
+      <button class="primary">新增使用者</button>
     </form>
   </div>
 </div>
@@ -363,8 +408,11 @@ todayEl.textContent = new Date().toLocaleDateString("zh-TW", {
 let drivers = [];
 let vehicles = [];
 let orders = [];
+let users = [];
 
 function getToken() { return localStorage.getItem("token"); }
+function getRole() { return localStorage.getItem("role"); }
+function isAdmin() { return getRole() === "admin"; }
 
 async function api(path, options = {}) {
   const res = await fetch(path, {
@@ -415,11 +463,13 @@ function statusBadge(status) {
 }
 
 async function loadAll() {
-  [drivers, vehicles, orders] = await Promise.all([
-    api("/api/drivers"),
-    api("/api/vehicles"),
-    api("/api/orders"),
-  ]);
+  const calls = [api("/api/drivers"), api("/api/vehicles"), api("/api/orders")];
+  if (isAdmin()) calls.push(api("/api/users"));
+
+  const results = await Promise.all(calls);
+  [drivers, vehicles, orders] = results;
+  if (isAdmin()) users = results[3];
+
   refresh();
 }
 
@@ -428,6 +478,7 @@ function refresh() {
   renderOrders();
   renderDrivers();
   renderVehicles();
+  if (isAdmin()) renderUsers();
 }
 
 function renderDashboard() {
@@ -472,6 +523,18 @@ function orderTable(list, showActions = true) {
       ${list.map(o => {
         const driver = drivers.find(d => d.id === o.driverId);
         const vehicle = vehicles.find(v => v.id === o.vehicleId);
+        const actions = [];
+
+        if (o.status === "待派車") {
+          actions.push(`<button class="action small" onclick="openDispatchModal('${o.id}')">指定派車</button>`);
+          actions.push(`<button class="action secondary small" onclick="openOrderModal('${o.id}')">編輯</button>`);
+        } else if (o.status !== "已完成") {
+          actions.push(`<button class="action secondary small" onclick="completeOrder('${o.id}')">完成</button>`);
+        }
+        if (isAdmin()) {
+          actions.push(`<button class="action danger small" onclick="deleteOrder('${o.id}')">刪除</button>`);
+        }
+
         return `
         <tr>
           <td>${escapeHTML(o.id)}</td>
@@ -481,11 +544,7 @@ function orderTable(list, showActions = true) {
           <td>${formatDate(o.time)}</td>
           <td>${statusBadge(o.status)}</td>
           <td>${driver ? escapeHTML(driver.name) : "-"} / ${vehicle ? escapeHTML(vehicle.plate) : "-"}</td>
-          ${showActions ? `<td>${
-            o.status === "待派車"
-              ? `<button class="action" onclick="openDispatchModal('${o.id}')">指定派車</button>`
-              : (o.status !== "已完成" ? `<button class="action secondary" onclick="completeOrder('${o.id}')">完成</button>` : "-")
-          }</td>` : ""}
+          ${showActions ? `<td><div class="btn-row">${actions.join("") || "-"}</div></td>` : ""}
         </tr>`;
       }).join("")}
     </tbody>
@@ -505,12 +564,16 @@ function renderOrders() {
 function renderDrivers() {
   document.getElementById("driversTable").innerHTML = `
   <table>
-    <thead><tr><th>編號</th><th>姓名</th><th>手機</th><th>證照期限</th><th>狀態</th></tr></thead>
+    <thead><tr><th>編號</th><th>姓名</th><th>手機</th><th>證照期限</th><th>狀態</th><th>操作</th></tr></thead>
     <tbody>
       ${drivers.map(d => `
       <tr>
         <td>${d.id}</td><td>${escapeHTML(d.name)}</td><td>${escapeHTML(d.phone)}</td>
         <td>${d.license}</td><td>${statusBadge(d.status)}</td>
+        <td><div class="btn-row">
+          <button class="action secondary small" onclick='openDriverModal(${JSON.stringify(d.id)})'>編輯</button>
+          ${isAdmin() ? `<button class="action danger small" onclick="deleteDriver('${d.id}')">刪除</button>` : ""}
+        </div></td>
       </tr>`).join("")}
     </tbody>
   </table>`;
@@ -519,20 +582,87 @@ function renderDrivers() {
 function renderVehicles() {
   document.getElementById("vehiclesTable").innerHTML = `
   <table>
-    <thead><tr><th>編號</th><th>車牌</th><th>車型</th><th>下次保養</th><th>狀態</th></tr></thead>
+    <thead><tr><th>編號</th><th>車牌</th><th>車型</th><th>下次保養</th><th>狀態</th><th>操作</th></tr></thead>
     <tbody>
       ${vehicles.map(v => `
       <tr>
         <td>${v.id}</td><td>${escapeHTML(v.plate)}</td><td>${escapeHTML(v.type)}</td>
         <td>${v.maintenance}</td><td>${statusBadge(v.status)}</td>
+        <td><div class="btn-row">
+          <button class="action secondary small" onclick='openVehicleModal(${JSON.stringify(v.id)})'>編輯</button>
+          ${isAdmin() ? `<button class="action danger small" onclick="deleteVehicle('${v.id}')">刪除</button>` : ""}
+        </div></td>
       </tr>`).join("")}
     </tbody>
   </table>`;
 }
 
-function openOrderModal() { document.getElementById("orderModal").classList.remove("hidden"); }
-function openDriverModal() { document.getElementById("driverModal").classList.remove("hidden"); }
-function openVehicleModal() { document.getElementById("vehicleModal").classList.remove("hidden"); }
+function renderUsers() {
+  document.getElementById("usersTable").innerHTML = `
+  <table>
+    <thead><tr><th>編號</th><th>帳號</th><th>角色</th><th>操作</th></tr></thead>
+    <tbody>
+      ${users.map(u => `
+      <tr>
+        <td>${u.id}</td><td>${escapeHTML(u.username)}</td>
+        <td><span class="badge ${u.role === 'admin' ? 'green' : ''}">${u.role === 'admin' ? '管理員' : '調度員'}</span></td>
+        <td><button class="action danger small" onclick="deleteUser(${u.id})">刪除</button></td>
+      </tr>`).join("")}
+    </tbody>
+  </table>`;
+}
+
+function openOrderModal(orderId) {
+  const order = orderId ? orders.find(o => o.id === orderId) : null;
+  document.getElementById("orderModalError").classList.add("hidden");
+  document.getElementById("orderEditId").value = order ? order.id : "";
+  document.getElementById("orderModalTitle").textContent = order ? "編輯訂單" : "新增運輸訂單";
+  document.getElementById("orderSubmitBtn").textContent = order ? "儲存變更" : "建立訂單";
+
+  document.getElementById("orderShip").value = order?.ship || "";
+  document.getElementById("orderContainer").value = order?.container || "";
+  document.getElementById("orderFrom").value = order?.from || "";
+  document.getElementById("orderTo").value = order?.to || "";
+  document.getElementById("orderTime").value = order?.time || "";
+  document.getElementById("orderSize").value = order?.size || "20 呎";
+
+  document.getElementById("orderModal").classList.remove("hidden");
+}
+
+function openDriverModal(driverId) {
+  const driver = driverId ? drivers.find(d => d.id === driverId) : null;
+  document.getElementById("driverModalError").classList.add("hidden");
+  document.getElementById("driverEditId").value = driver ? driver.id : "";
+  document.getElementById("driverModalTitle").textContent = driver ? "編輯司機資料" : "新增司機";
+  document.getElementById("driverSubmitBtn").textContent = driver ? "儲存變更" : "新增司機";
+
+  document.getElementById("driverName").value = driver?.name || "";
+  document.getElementById("driverPhone").value = driver?.phone || "";
+  document.getElementById("driverLicense").value = driver?.license || "";
+
+  document.getElementById("driverModal").classList.remove("hidden");
+}
+
+function openVehicleModal(vehicleId) {
+  const vehicle = vehicleId ? vehicles.find(v => v.id === vehicleId) : null;
+  document.getElementById("vehicleModalError").classList.add("hidden");
+  document.getElementById("vehicleEditId").value = vehicle ? vehicle.id : "";
+  document.getElementById("vehicleModalTitle").textContent = vehicle ? "編輯車輛資料" : "新增車輛";
+  document.getElementById("vehicleSubmitBtn").textContent = vehicle ? "儲存變更" : "新增車輛";
+
+  document.getElementById("vehiclePlate").value = vehicle?.plate || "";
+  document.getElementById("vehicleType").value = vehicle?.type || "";
+  document.getElementById("vehicleMaintenance").value = vehicle?.maintenance || "";
+
+  document.getElementById("vehicleModal").classList.remove("hidden");
+}
+
+function openUserModal() {
+  document.getElementById("userModalError").classList.add("hidden");
+  document.getElementById("userForm").reset();
+  document.getElementById("userModal").classList.remove("hidden");
+}
+
 function closeModal(id) { document.getElementById(id).classList.add("hidden"); }
 
 function openDispatchModal(orderId) {
@@ -561,6 +691,46 @@ async function completeOrder(orderId) {
   }
 }
 
+async function deleteOrder(orderId) {
+  if (!confirm("確定要刪除這筆訂單嗎?")) return;
+  try {
+    await api(`/api/orders/${orderId}`, { method: "DELETE" });
+    await loadAll();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function deleteDriver(driverId) {
+  if (!confirm("確定要刪除這位司機嗎?")) return;
+  try {
+    await api(`/api/drivers/${driverId}`, { method: "DELETE" });
+    await loadAll();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function deleteVehicle(vehicleId) {
+  if (!confirm("確定要刪除這輛車嗎?")) return;
+  try {
+    await api(`/api/vehicles/${vehicleId}`, { method: "DELETE" });
+    await loadAll();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function deleteUser(userId) {
+  if (!confirm("確定要刪除這個使用者帳號嗎?")) return;
+  try {
+    await api(`/api/users/${userId}`, { method: "DELETE" });
+    await loadAll();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
 function exportCSV() {
   fetch("/api/orders/export/csv", { headers: { Authorization: "Bearer " + getToken() } })
     .then(res => res.blob())
@@ -581,12 +751,22 @@ function showLogin() {
 function showApp() {
   document.getElementById("loginPage").classList.add("hidden");
   document.getElementById("app").classList.remove("hidden");
-  document.getElementById("currentUser").textContent = "目前使用者：" + (localStorage.getItem("username") || "-");
+
+  const username = localStorage.getItem("username") || "-";
+  const role = getRole();
+  const roleLabel = role === "admin" ? "管理員" : "調度員";
+  document.getElementById("currentUser").innerHTML =
+    `目前使用者：${escapeHTML(username)}<span class="role-tag">${roleLabel}</span>`;
+
+  document.querySelectorAll(".admin-only").forEach(el => {
+    el.classList.toggle("hidden", role !== "admin");
+  });
 }
 
 function logout() {
   localStorage.removeItem("token");
   localStorage.removeItem("username");
+  localStorage.removeItem("role");
   showLogin();
 }
 
@@ -609,6 +789,7 @@ document.getElementById("loginForm").addEventListener("submit", async e => {
 
     localStorage.setItem("token", data.token);
     localStorage.setItem("username", data.username);
+    localStorage.setItem("role", data.role);
     showApp();
     await loadAll();
   } catch (err) {
@@ -631,6 +812,7 @@ document.querySelectorAll(".nav-btn[data-page]").forEach(button => {
       orders: "訂單與車趟管理",
       drivers: "司機資料管理",
       vehicles: "車輛資料管理",
+      users: "使用者管理",
     };
     document.getElementById("pageTitle").textContent = titles[button.dataset.page];
   });
@@ -643,19 +825,23 @@ document.getElementById("orderForm").addEventListener("submit", async e => {
   e.preventDefault();
   const errorBox = document.getElementById("orderModalError");
   errorBox.classList.add("hidden");
+  const editId = document.getElementById("orderEditId").value;
+
+  const payload = {
+    ship: document.getElementById("orderShip").value,
+    container: document.getElementById("orderContainer").value,
+    from: document.getElementById("orderFrom").value,
+    to: document.getElementById("orderTo").value,
+    time: document.getElementById("orderTime").value,
+    size: document.getElementById("orderSize").value,
+  };
 
   try {
-    await api("/api/orders", {
-      method: "POST",
-      body: JSON.stringify({
-        ship: document.getElementById("orderShip").value,
-        container: document.getElementById("orderContainer").value,
-        from: document.getElementById("orderFrom").value,
-        to: document.getElementById("orderTo").value,
-        time: document.getElementById("orderTime").value,
-        size: document.getElementById("orderSize").value,
-      }),
-    });
+    if (editId) {
+      await api(`/api/orders/${editId}`, { method: "PATCH", body: JSON.stringify(payload) });
+    } else {
+      await api("/api/orders", { method: "POST", body: JSON.stringify(payload) });
+    }
     await loadAll();
     e.target.reset();
     closeModal("orderModal");
@@ -686,39 +872,78 @@ document.getElementById("dispatchForm").addEventListener("submit", async e => {
 
 document.getElementById("driverForm").addEventListener("submit", async e => {
   e.preventDefault();
+  const errorBox = document.getElementById("driverModalError");
+  errorBox.classList.add("hidden");
+  const editId = document.getElementById("driverEditId").value;
+
+  const payload = {
+    name: document.getElementById("driverName").value,
+    phone: document.getElementById("driverPhone").value,
+    license: document.getElementById("driverLicense").value,
+  };
+
   try {
-    await api("/api/drivers", {
-      method: "POST",
-      body: JSON.stringify({
-        name: document.getElementById("driverName").value,
-        phone: document.getElementById("driverPhone").value,
-        license: document.getElementById("driverLicense").value,
-      }),
-    });
+    if (editId) {
+      await api(`/api/drivers/${editId}`, { method: "PATCH", body: JSON.stringify(payload) });
+    } else {
+      await api("/api/drivers", { method: "POST", body: JSON.stringify(payload) });
+    }
     await loadAll();
     e.target.reset();
     closeModal("driverModal");
   } catch (err) {
-    alert(err.message);
+    errorBox.textContent = err.message;
+    errorBox.classList.remove("hidden");
   }
 });
 
 document.getElementById("vehicleForm").addEventListener("submit", async e => {
   e.preventDefault();
+  const errorBox = document.getElementById("vehicleModalError");
+  errorBox.classList.add("hidden");
+  const editId = document.getElementById("vehicleEditId").value;
+
+  const payload = {
+    plate: document.getElementById("vehiclePlate").value,
+    type: document.getElementById("vehicleType").value,
+    maintenance: document.getElementById("vehicleMaintenance").value,
+  };
+
   try {
-    await api("/api/vehicles", {
-      method: "POST",
-      body: JSON.stringify({
-        plate: document.getElementById("vehiclePlate").value,
-        type: document.getElementById("vehicleType").value,
-        maintenance: document.getElementById("vehicleMaintenance").value,
-      }),
-    });
+    if (editId) {
+      await api(`/api/vehicles/${editId}`, { method: "PATCH", body: JSON.stringify(payload) });
+    } else {
+      await api("/api/vehicles", { method: "POST", body: JSON.stringify(payload) });
+    }
     await loadAll();
     e.target.reset();
     closeModal("vehicleModal");
   } catch (err) {
-    alert(err.message);
+    errorBox.textContent = err.message;
+    errorBox.classList.remove("hidden");
+  }
+});
+
+document.getElementById("userForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const errorBox = document.getElementById("userModalError");
+  errorBox.classList.add("hidden");
+
+  try {
+    await api("/api/users", {
+      method: "POST",
+      body: JSON.stringify({
+        username: document.getElementById("userUsername").value,
+        password: document.getElementById("userPassword").value,
+        role: document.getElementById("userRole").value,
+      }),
+    });
+    await loadAll();
+    e.target.reset();
+    closeModal("userModal");
+  } catch (err) {
+    errorBox.textContent = err.message;
+    errorBox.classList.remove("hidden");
   }
 });
 

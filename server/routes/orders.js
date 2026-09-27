@@ -1,6 +1,7 @@
 const express = require("express");
-const db = require("../db");
-const { requireAuth } = require("../auth");
+const { pool } = require("../db");
+const { requireAuth, requireRole } = require("../auth");
+const { validateBody } = require("../validation");
 
 const router = express.Router();
 
@@ -21,31 +22,88 @@ function serializeOrder(row) {
   };
 }
 
-router.get("/", (req, res) => {
-  const rows = db.prepare("SELECT * FROM orders ORDER BY id").all();
-  res.json(rows.map(serializeOrder));
-});
-
-router.post("/", (req, res) => {
-  const { ship, container, from, to, time, size } = req.body || {};
-
-  if (!ship || !container || !from || !to || !time || !size) {
-    return res.status(400).json({ error: "所有欄位皆為必填" });
+router.get("/", async (req, res, next) => {
+  try {
+    const { rows } = await pool.query("SELECT * FROM orders ORDER BY id");
+    res.json(rows.map(serializeOrder));
+  } catch (err) {
+    next(err);
   }
-
-  const id = "O" + Date.now();
-
-  db.prepare(`
-    INSERT INTO orders (id, ship, container, from_location, to_location, time, size, status, driver_id, vehicle_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, '待派車', NULL, NULL)
-  `).run(id, ship, container, from, to, time, size);
-
-  const row = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);
-  res.status(201).json(serializeOrder(row));
 });
+
+router.post(
+  "/",
+  validateBody({
+    ship: { required: true, type: "string", maxLength: 100, label: "船名／航次" },
+    container: { required: true, type: "string", maxLength: 30, label: "貨櫃編號" },
+    from: { required: true, type: "string", maxLength: 100, label: "起點" },
+    to: { required: true, type: "string", maxLength: 100, label: "終點" },
+    time: { required: true, type: "date", label: "作業時間" },
+    size: { required: true, enum: ["20 呎", "40 呎", "45 呎"], label: "貨櫃尺寸" },
+  }),
+  async (req, res, next) => {
+    try {
+      const { ship, container, from, to, time, size } = req.body;
+      const id = "O" + Date.now();
+
+      const { rows } = await pool.query(
+        `INSERT INTO orders (id, ship, container, from_location, to_location, time, size, status, driver_id, vehicle_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, '待派車', NULL, NULL) RETURNING *`,
+        [id, ship, container, from, to, time, size]
+      );
+
+      res.status(201).json(serializeOrder(rows[0]));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 編輯訂單基本資料(不含派車、不含狀態變更)——僅限尚未派車的訂單,避免和已進行的派車衝突
+router.patch(
+  "/:id",
+  validateBody({
+    ship: { type: "string", maxLength: 100, label: "船名／航次" },
+    container: { type: "string", maxLength: 30, label: "貨櫃編號" },
+    from: { type: "string", maxLength: 100, label: "起點" },
+    to: { type: "string", maxLength: 100, label: "終點" },
+    time: { type: "date", label: "作業時間" },
+    size: { enum: ["20 呎", "40 呎", "45 呎"], label: "貨櫃尺寸" },
+  }),
+  async (req, res, next) => {
+    try {
+      const existing = await pool.query("SELECT * FROM orders WHERE id = $1", [req.params.id]);
+      if (!existing.rows.length) return res.status(404).json({ error: "找不到此訂單" });
+
+      const order = existing.rows[0];
+      if (order.status !== "待派車") {
+        return res.status(409).json({ error: "只有「待派車」狀態的訂單可以編輯基本資料" });
+      }
+
+      const {
+        ship = order.ship,
+        container = order.container,
+        from: fromLocation = order.from_location,
+        to: toLocation = order.to_location,
+        time = order.time,
+        size = order.size,
+      } = req.body || {};
+
+      const { rows } = await pool.query(
+        `UPDATE orders SET ship = $1, container = $2, from_location = $3, to_location = $4, time = $5, size = $6
+         WHERE id = $7 RETURNING *`,
+        [ship, container, fromLocation, toLocation, time, size, req.params.id]
+      );
+
+      res.json(serializeOrder(rows[0]));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 // 派車前的合法性檢查:司機/車輛狀態、證照與保養逾期、同一時段是否已被指派
-function validateDispatch(order, driver, vehicle) {
+async function validateDispatch(order, driver, vehicle) {
   const errors = [];
   const now = new Date();
 
@@ -65,89 +123,127 @@ function validateDispatch(order, driver, vehicle) {
   }
 
   if (driver) {
-    const clash = db
-      .prepare(`
-        SELECT 1 FROM orders
-        WHERE id != ? AND driver_id = ? AND status IN ('已派車', '執行中') AND time = ?
-      `)
-      .get(order.id, driver.id, order.time);
-    if (clash) errors.push("司機同一時段已有其他任務");
+    const clash = await pool.query(
+      `SELECT 1 FROM orders
+       WHERE id != $1 AND driver_id = $2 AND status IN ('已派車', '執行中') AND time = $3`,
+      [order.id, driver.id, order.time]
+    );
+    if (clash.rows.length) errors.push("司機同一時段已有其他任務");
   }
 
   if (vehicle) {
-    const clash = db
-      .prepare(`
-        SELECT 1 FROM orders
-        WHERE id != ? AND vehicle_id = ? AND status IN ('已派車', '執行中') AND time = ?
-      `)
-      .get(order.id, vehicle.id, order.time);
-    if (clash) errors.push("車輛同一時段已有其他任務");
+    const clash = await pool.query(
+      `SELECT 1 FROM orders
+       WHERE id != $1 AND vehicle_id = $2 AND status IN ('已派車', '執行中') AND time = $3`,
+      [order.id, vehicle.id, order.time]
+    );
+    if (clash.rows.length) errors.push("車輛同一時段已有其他任務");
   }
 
   return errors;
 }
 
-router.patch("/:id/dispatch", (req, res) => {
-  const { driverId, vehicleId } = req.body || {};
+router.patch(
+  "/:id/dispatch",
+  validateBody({
+    driverId: { required: true, type: "string", label: "司機" },
+    vehicleId: { required: true, type: "string", label: "車輛" },
+  }),
+  async (req, res, next) => {
+    try {
+      const { driverId, vehicleId } = req.body;
 
-  const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(req.params.id);
-  if (!order) return res.status(404).json({ error: "找不到此訂單" });
+      const orderResult = await pool.query("SELECT * FROM orders WHERE id = $1", [req.params.id]);
+      if (!orderResult.rows.length) return res.status(404).json({ error: "找不到此訂單" });
+      const order = orderResult.rows[0];
 
-  const driver = driverId
-    ? db.prepare("SELECT * FROM drivers WHERE id = ?").get(driverId)
-    : null;
-  const vehicle = vehicleId
-    ? db.prepare("SELECT * FROM vehicles WHERE id = ?").get(vehicleId)
-    : null;
+      const driverResult = await pool.query("SELECT * FROM drivers WHERE id = $1", [driverId]);
+      const vehicleResult = await pool.query("SELECT * FROM vehicles WHERE id = $1", [vehicleId]);
+      const driver = driverResult.rows[0] || null;
+      const vehicle = vehicleResult.rows[0] || null;
 
-  const errors = validateDispatch(order, driver, vehicle);
-  if (errors.length) {
-    return res.status(409).json({ error: "派車失敗", details: errors });
+      const errors = await validateDispatch(order, driver, vehicle);
+      if (errors.length) {
+        return res.status(409).json({ error: "派車失敗", details: errors });
+      }
+
+      const { rows } = await pool.query(
+        "UPDATE orders SET status = '已派車', driver_id = $1, vehicle_id = $2 WHERE id = $3 RETURNING *",
+        [driver.id, vehicle.id, order.id]
+      );
+      await pool.query("UPDATE drivers SET status = '執行中' WHERE id = $1", [driver.id]);
+      await pool.query("UPDATE vehicles SET status = '執行中' WHERE id = $1", [vehicle.id]);
+
+      res.json(serializeOrder(rows[0]));
+    } catch (err) {
+      next(err);
+    }
   }
+);
 
-  db.prepare(
-    "UPDATE orders SET status = '已派車', driver_id = ?, vehicle_id = ? WHERE id = ?"
-  ).run(driver.id, vehicle.id, order.id);
+router.patch("/:id/complete", async (req, res, next) => {
+  try {
+    const orderResult = await pool.query("SELECT * FROM orders WHERE id = $1", [req.params.id]);
+    if (!orderResult.rows.length) return res.status(404).json({ error: "找不到此訂單" });
+    const order = orderResult.rows[0];
 
-  db.prepare("UPDATE drivers SET status = '執行中' WHERE id = ?").run(driver.id);
-  db.prepare("UPDATE vehicles SET status = '執行中' WHERE id = ?").run(vehicle.id);
+    const { rows } = await pool.query(
+      "UPDATE orders SET status = '已完成' WHERE id = $1 RETURNING *",
+      [order.id]
+    );
 
-  const updated = db.prepare("SELECT * FROM orders WHERE id = ?").get(order.id);
-  res.json(serializeOrder(updated));
+    if (order.driver_id) {
+      await pool.query("UPDATE drivers SET status = '可派車' WHERE id = $1", [order.driver_id]);
+    }
+    if (order.vehicle_id) {
+      await pool.query("UPDATE vehicles SET status = '可用' WHERE id = $1", [order.vehicle_id]);
+    }
+
+    res.json(serializeOrder(rows[0]));
+  } catch (err) {
+    next(err);
+  }
 });
 
-router.patch("/:id/complete", (req, res) => {
-  const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(req.params.id);
-  if (!order) return res.status(404).json({ error: "找不到此訂單" });
+router.delete("/:id", requireRole("admin"), async (req, res, next) => {
+  try {
+    const orderResult = await pool.query("SELECT * FROM orders WHERE id = $1", [req.params.id]);
+    if (!orderResult.rows.length) return res.status(404).json({ error: "找不到此訂單" });
+    const order = orderResult.rows[0];
 
-  db.prepare("UPDATE orders SET status = '已完成' WHERE id = ?").run(order.id);
+    if (order.driver_id) {
+      await pool.query("UPDATE drivers SET status = '可派車' WHERE id = $1", [order.driver_id]);
+    }
+    if (order.vehicle_id) {
+      await pool.query("UPDATE vehicles SET status = '可用' WHERE id = $1", [order.vehicle_id]);
+    }
 
-  if (order.driver_id) {
-    db.prepare("UPDATE drivers SET status = '可派車' WHERE id = ?").run(order.driver_id);
+    await pool.query("DELETE FROM orders WHERE id = $1", [order.id]);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
   }
-  if (order.vehicle_id) {
-    db.prepare("UPDATE vehicles SET status = '可用' WHERE id = ?").run(order.vehicle_id);
-  }
-
-  const updated = db.prepare("SELECT * FROM orders WHERE id = ?").get(order.id);
-  res.json(serializeOrder(updated));
 });
 
-router.get("/export/csv", (req, res) => {
-  const rows = db.prepare("SELECT * FROM orders ORDER BY id").all();
-  const header = ["訂單編號", "船名航次", "貨櫃編號", "起點", "終點", "作業時間", "尺寸", "狀態"];
+router.get("/export/csv", async (req, res, next) => {
+  try {
+    const { rows } = await pool.query("SELECT * FROM orders ORDER BY id");
+    const header = ["訂單編號", "船名航次", "貨櫃編號", "起點", "終點", "作業時間", "尺寸", "狀態"];
 
-  const csvRows = rows.map((o) => [
-    o.id, o.ship, o.container, o.from_location, o.to_location, o.time, o.size, o.status,
-  ]);
+    const csvRows = rows.map((o) => [
+      o.id, o.ship, o.container, o.from_location, o.to_location, o.time, o.size, o.status,
+    ]);
 
-  const csv = [header, ...csvRows]
-    .map((row) => row.map((v) => `"${String(v).replaceAll('"', '""')}"`).join(","))
-    .join("\n");
+    const csv = [header, ...csvRows]
+      .map((row) => row.map((v) => `"${String(v).replaceAll('"', '""')}"`).join(","))
+      .join("\n");
 
-  res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader("Content-Disposition", 'attachment; filename="港區運輸訂單.csv"');
-  res.send("\ufeff" + csv);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", 'attachment; filename="港區運輸訂單.csv"');
+    res.send("\ufeff" + csv);
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

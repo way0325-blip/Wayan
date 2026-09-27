@@ -9,9 +9,11 @@ if (!JWT_SECRET) {
 }
 
 function generateToken(user) {
-  return jwt.sign({ sub: user.id, username: user.username }, JWT_SECRET, {
-    expiresIn: "8h",
-  });
+  return jwt.sign(
+    { sub: user.id, username: user.username, role: user.role },
+    JWT_SECRET,
+    { expiresIn: "8h" }
+  );
 }
 
 function requireAuth(req, res, next) {
@@ -30,4 +32,14 @@ function requireAuth(req, res, next) {
   }
 }
 
-module.exports = { generateToken, requireAuth };
+// 用法: requireRole("admin") 或 requireRole("admin", "dispatcher")
+function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ error: "權限不足,此操作僅限:" + roles.join("、") });
+    }
+    next();
+  };
+}
+
+module.exports = { generateToken, requireAuth, requireRole };

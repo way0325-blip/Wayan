@@ -1,24 +1,59 @@
 # Wayan — 港區星際運輸調度中心
 
-前端 + 後端全端版本,基於原本的靜態 HTML 展示版擴充而成。
+Node.js + Express + PostgreSQL 全端版本,基於原本的靜態 HTML 展示版擴充而成。
 
-- **前端**:純 HTML/CSS/JS(`public/index.html`),透過 `fetch` 呼叫後端 API
-- **後端**:Node.js + Express
-- **資料庫**:SQLite(使用 Node 22 內建的 `node:sqlite` 模組,無需額外安裝原生套件)
-- **驗證**:JWT(登入後取得 token,存於瀏覽器 localStorage,之後每個 API 請求帶上)
+- **前端**:純 HTML/CSS/JS(`public/index.html`),透過 `fetch` 呼叫後端 API,依角色顯示不同操作權限
+- **後端**:Node.js + Express,含安全性中介層(Helmet、速率限制、輸入驗證、CORS 白名單)
+- **資料庫**:PostgreSQL(`pg` 套件)
+- **驗證**:JWT(登入後取得 token,存於瀏覽器 localStorage),支援 **admin / dispatcher** 兩種角色
+- **部署**:提供 Dockerfile 與 docker-compose(app + PostgreSQL)
+- **CI**:GitHub Actions 自動執行 lint 與測試(含 Postgres service container)
 
-## 本機啟動方式
+## 角色權限
+
+| 操作 | admin(管理員) | dispatcher(調度員) |
+|---|---|---|
+| 登入、瀏覽儀表板/訂單/司機/車輛 | ✅ | ✅ |
+| 新增/編輯訂單、司機、車輛 | ✅ | ✅ |
+| 指定派車、完成訂單 | ✅ | ✅ |
+| **刪除**訂單、司機、車輛 | ✅ | ❌ |
+| 管理使用者帳號(新增/刪除/列表) | ✅ | ❌ |
+
+資料庫第一次啟動時,會依 `.env` 的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 種子出一個 **admin** 帳號。之後請透過「使用者管理」頁面(或 `/api/users`)新增其他帳號,不要繼續共用預設帳密。
+
+## 本機啟動方式(不使用 Docker)
+
+需要本機已安裝 PostgreSQL。
 
 ```bash
+# 1. 建立資料庫
+createdb wayan_dispatch
+
+# 2. 安裝依賴
 npm install
+
+# 3. 設定環境變數
 cp .env.example .env
-# 視需要編輯 .env(埠號、JWT_SECRET、初始帳密)
+# 編輯 .env,至少確認 DATABASE_URL 指向你剛建立的資料庫
+
+# 4. 啟動
 npm start
 ```
 
-啟動後開啟 http://localhost:3000,使用 `.env` 裡設定的帳號密碼登入(預設 admin / 1234)。
+開啟 http://localhost:3000,使用 `.env` 裡設定的帳號密碼登入(預設 admin / 1234)。
 
 開發時可用 `npm run dev`(Node 內建 `--watch`,存檔自動重啟)。
+
+## 使用 Docker Compose 啟動(推薦)
+
+```bash
+cp .env.example .env
+# 編輯 .env 設定 JWT_SECRET 等變數(docker-compose 會自動讀取)
+
+docker compose up --build
+```
+
+會同時啟動 PostgreSQL 與應用程式,應用程式會等資料庫就緒後再啟動。開啟 http://localhost:3000 即可使用。
 
 ## 指令一覽
 
@@ -27,7 +62,20 @@ npm start
 | `npm start` | 啟動正式伺服器 |
 | `npm run dev` | 開發模式,檔案變更自動重啟 |
 | `npm run lint` | 語法檢查(`node --check`) |
-| `npm test` | 執行自動化測試(`node --test`,涵蓋健康檢查、登入、權限驗證、派車流程) |
+| `npm test` | 執行自動化測試(`node --test`),需要一個可連線的 PostgreSQL(見下方「測試」) |
+
+## 測試
+
+測試會連線到 `TEST_DATABASE_URL`(未設定時預設 `postgres://postgres:postgres@127.0.0.1:5432/wayan_dispatch_test`),每次執行前會先清空並重建 schema,確保結果可重現。
+
+```bash
+createdb wayan_dispatch_test   # 只需建立一次
+npm test
+```
+
+測試涵蓋:健康檢查、登入成功/失敗、未登入擋 API、派車流程、角色權限(dispatcher 不能刪除/管理使用者)、輸入驗證、登入速率限制。
+
+CI(GitHub Actions,見 `.github/workflows/ci.yml`)會在每次 push / PR 時,用一個臨時的 Postgres service container 自動執行 `npm run lint` 與 `npm test`。
 
 ## 環境變數
 
@@ -36,28 +84,57 @@ npm start
 | 變數 | 說明 |
 |---|---|
 | `PORT` | 伺服器埠號,預設 3000 |
-| `DB_PATH` | SQLite 資料庫檔案路徑,預設 `./data/dispatch.db` |
+| `DATABASE_URL` | PostgreSQL 連線字串 |
 | `JWT_SECRET` | JWT 簽章密鑰,**正式環境務必更換成隨機長字串** |
+| `CORS_ORIGIN` | 允許的前端來源,多個網址用逗號分隔;留空則允許所有來源(僅建議開發環境) |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 資料庫第一次建立時,種子管理員帳號的帳密 |
 
 ## API 一覽
 
-| 方法 | 路徑 | 說明 | 需要登入 |
+| 方法 | 路徑 | 說明 | 權限 |
 |---|---|---|---|
-| POST | `/api/auth/login` | 登入,取得 JWT token | 否 |
-| GET | `/api/orders` | 取得所有訂單 | 是 |
-| POST | `/api/orders` | 新增訂單 | 是 |
-| PATCH | `/api/orders/:id/dispatch` | 指定派車(含衝突檢查) | 是 |
-| PATCH | `/api/orders/:id/complete` | 完成訂單 | 是 |
-| GET | `/api/orders/export/csv` | 匯出訂單 CSV | 是 |
-| GET | `/api/drivers` | 取得司機列表 | 是 |
-| POST | `/api/drivers` | 新增司機 | 是 |
-| GET | `/api/vehicles` | 取得車輛列表 | 是 |
-| POST | `/api/vehicles` | 新增車輛 | 是 |
+| POST | `/api/auth/login` | 登入,取得 JWT token | 任何人(有速率限制) |
+| GET | `/api/orders` | 取得所有訂單 | 已登入 |
+| POST | `/api/orders` | 新增訂單 | 已登入 |
+| PATCH | `/api/orders/:id` | 編輯訂單基本資料(僅限「待派車」狀態) | 已登入 |
+| PATCH | `/api/orders/:id/dispatch` | 指定派車(含衝突檢查) | 已登入 |
+| PATCH | `/api/orders/:id/complete` | 完成訂單 | 已登入 |
+| DELETE | `/api/orders/:id` | 刪除訂單 | **admin** |
+| GET | `/api/orders/export/csv` | 匯出訂單 CSV | 已登入 |
+| GET | `/api/drivers` | 取得司機列表 | 已登入 |
+| POST | `/api/drivers` | 新增司機 | 已登入 |
+| PATCH | `/api/drivers/:id` | 編輯司機資料 | 已登入 |
+| DELETE | `/api/drivers/:id` | 刪除司機(有進行中訂單則拒絕) | **admin** |
+| GET | `/api/vehicles` | 取得車輛列表 | 已登入 |
+| POST | `/api/vehicles` | 新增車輛 | 已登入 |
+| PATCH | `/api/vehicles/:id` | 編輯車輛資料 | 已登入 |
+| DELETE | `/api/vehicles/:id` | 刪除車輛(有進行中訂單則拒絕) | **admin** |
+| GET | `/api/users` | 列出使用者帳號 | **admin** |
+| POST | `/api/users` | 新增使用者帳號 | **admin** |
+| DELETE | `/api/users/:id` | 刪除使用者帳號(不可刪自己/最後一位 admin) | **admin** |
+
+## 安全性設計
+
+- **密碼**:bcrypt 雜湊儲存,不存明碼
+- **JWT**:8 小時過期,需在請求帶 `Authorization: Bearer <token>`
+- **速率限制**:全站 API 每 15 分鐘 300 次;`/api/auth/login` 每 15 分鐘 10 次,降低暴力破解風險
+- **輸入驗證**:所有寫入型 API(新增/編輯)皆有欄位必填、型別、長度、列舉值檢查,失敗回傳 400 與詳細錯誤訊息
+- **CORS**:透過 `CORS_ORIGIN` 白名單限制允許的前端來源
+- **安全性 headers**:使用 Helmet(含基本 CSP、不洩漏框架資訊等)
+- **權限控管**:所有刪除、使用者管理端點皆限制僅 `admin` 角色可呼叫,伺服器端強制驗證,不僅依賴前端隱藏按鈕
+
+## 部署準備
+
+- 提供 `Dockerfile`(多階段、僅安裝 production 依賴)與 `docker-compose.yml`(app + PostgreSQL,含健康檢查)
+- 正式環境請務必:
+  1. 更換 `JWT_SECRET` 為隨機長字串
+  2. 設定 `CORS_ORIGIN` 為實際網域,不要留空
+  3. 更換或移除預設 `ADMIN_PASSWORD`,改用 `/api/users` 建立正式帳號
+  4. 於 PostgreSQL 前面加上 TLS(視部署平台而定)、定期備份
 
 ## 已知限制 / 尚未處理事項
 
-- 目前僅有單一管理員帳號,尚未做多使用者、角色權限區分
-- 未加上 rate limiting、CSRF 防護等正式上線前建議補強的安全措施
+- 未做 refresh token 機制,JWT 過期後需重新登入
+- 未加上密碼強度規則(僅檢查最短長度)
 - 前端沒有拆成模組化的 build 流程(單一 HTML 檔案 + 原生 JS),適合展示,正式產品建議改用前端框架
-
+- 未做分頁,訂單/司機/車輛數量很大時前端表格效能未特別優化

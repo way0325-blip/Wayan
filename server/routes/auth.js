@@ -1,27 +1,37 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
-const db = require("../db");
+const { pool } = require("../db");
 const { generateToken } = require("../auth");
+const { validateBody } = require("../validation");
 
 const router = express.Router();
 
-router.post("/login", (req, res) => {
-  const { username, password } = req.body || {};
+router.post(
+  "/login",
+  validateBody({
+    username: { required: true, type: "string", label: "帳號" },
+    password: { required: true, type: "string", label: "密碼" },
+  }),
+  async (req, res, next) => {
+    try {
+      const { username, password } = req.body;
 
-  if (!username || !password) {
-    return res.status(400).json({ error: "請輸入帳號與密碼" });
+      const { rows } = await pool.query(
+        "SELECT * FROM users WHERE username = $1",
+        [username]
+      );
+      const user = rows[0];
+
+      if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+        return res.status(401).json({ error: "帳號或密碼錯誤" });
+      }
+
+      const token = generateToken(user);
+      res.json({ token, username: user.username, role: user.role });
+    } catch (err) {
+      next(err);
+    }
   }
-
-  const user = db
-    .prepare("SELECT * FROM users WHERE username = ?")
-    .get(username);
-
-  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
-    return res.status(401).json({ error: "帳號或密碼錯誤" });
-  }
-
-  const token = generateToken(user);
-  res.json({ token, username: user.username });
-});
+);
 
 module.exports = router;
