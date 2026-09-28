@@ -24,6 +24,7 @@ function serialize(s) {
     locations: s.locations,
     containerSizes: s.container_sizes,
     carriers: s.carriers,
+    lineGroupIds: s.line_group_ids,
   };
 }
 
@@ -45,7 +46,7 @@ function cleanList(value, label, maxItems, maxLen) {
 
 router.put("/", requireRole("admin"), async (req, res, next) => {
   try {
-    const { systemName, announcement, locations, containerSizes, carriers } = req.body || {};
+    const { systemName, announcement, locations, containerSizes, carriers, lineGroupIds } = req.body || {};
     const changed = [];
 
     if (systemName !== undefined) {
@@ -80,6 +81,13 @@ router.put("/", requireRole("admin"), async (req, res, next) => {
       if (!r.items.length) return res.status(400).json({ error: "船公司至少要有一項" });
       await saveSetting("carriers", r.items);
       changed.push("船公司");
+    }
+
+    if (lineGroupIds !== undefined) {
+      const r = cleanList(lineGroupIds, "LINE 群組 ID", 20, 60);
+      if (r.error) return res.status(400).json({ error: r.error });
+      await saveSetting("line_group_ids", r.items);
+      changed.push("LINE 群組");
     }
 
     if (!changed.length) return res.status(400).json({ error: "沒有要修改的欄位" });

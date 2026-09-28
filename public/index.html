@@ -336,6 +336,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
             <label><input type="checkbox" id="pickAll" onchange="toggleAllPick(this.checked)"> 全選目前列表</label>
             <span id="pickCount" class="muted">已選 0 筆</span>
             <button class="action small" id="copyBtn" onclick="openCopyModal()" disabled>📋 複製明細</button>
+            <button class="action secondary small" id="lineBtn" onclick="pushSelectedToLine()" disabled>📲 推送到 LINE</button>
             <button class="action secondary small" onclick="clearPicks()">清除</button>
           </div>
           <div id="orderList"></div>
@@ -380,6 +381,11 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
         <div class="field"><label>公告(顯示在儀表板最上方,留空則不顯示)</label><textarea id="setAnnouncement" maxlength="500"></textarea></div>
         <div class="field"><label>常用地點(一行一個,建立訂單時可快速選擇)</label><textarea id="setLocations"></textarea></div>
         <div class="field"><label>船公司(一行一個,建立訂單與篩選時使用)</label><textarea id="setCarriers"></textarea></div>
+        <div class="field">
+          <label>LINE 群組 ID(一行一個)</label>
+          <textarea id="setLineGroups" placeholder="把 LINE bot 加入群組後,群組會自動回覆一組 ID,貼在這裡"></textarea>
+          <div class="hint">推送明細、每日/每週報表都會發到這裡設定的所有群組。取得方式:把 bot 加入群組,bot 會自動回覆這個群組的 ID。</div>
+        </div>
         <div class="field"><label>貨櫃尺寸(一行一個)</label><textarea id="setSizes"></textarea><div class="hint">已存在的訂單不受影響;移除的尺寸只是不能再用於新訂單。</div></div>
         <button class="action" onclick="saveSettings()">儲存設定</button><span id="settingsMsg" class="ok-msg"></span>
       </div>
@@ -537,7 +543,7 @@ let drivers = [];
 let vehicles = [];
 let orders = [];
 let users = [];
-let settings = { systemName: "港區星際運輸調度中心", announcement: "", locations: [], containerSizes: ["20 呎", "40 呎", "45 呎"], carriers: [] };
+let settings = { systemName: "港區星際運輸調度中心", announcement: "", locations: [], containerSizes: ["20 呎", "40 呎", "45 呎"], carriers: [], lineGroupIds: [] };
 
 function getToken() { return localStorage.getItem("token"); }
 function getRole() { return localStorage.getItem("role"); }
@@ -737,6 +743,7 @@ function updatePickBar(list = filteredOrders()) {
   const n = picks.size;
   document.getElementById("pickCount").textContent = `已選 ${n} 筆`;
   document.getElementById("copyBtn").disabled = n === 0;
+  document.getElementById("lineBtn").disabled = n === 0;
   const all = document.getElementById("pickAll");
   const inList = list.filter(o => picks.has(o.id)).length;
   all.checked = list.length > 0 && inList === list.length;
@@ -788,6 +795,18 @@ function buildDispatchText(list) {
     }
   }
   return lines.join("\n");
+}
+
+async function pushSelectedToLine() {
+  const ids = [...picks];
+  if (!ids.length) return;
+  if (!confirm(`確定要把這 ${ids.length} 筆訂單推送到後台設定的 LINE 群組嗎?`)) return;
+  try {
+    const r = await api("/api/orders/push-line", { method: "POST", body: JSON.stringify({ orderIds: ids }) });
+    alert(`已推送 ${r.sent} 筆到 ${r.groups.length} 個 LINE 群組`);
+  } catch (err) {
+    alert("推送失敗：" + err.message);
+  }
 }
 
 function copySingleOrder(id) {
@@ -978,6 +997,7 @@ function applySettings() {
     document.getElementById("setLocations").value = settings.locations.join("\n");
     document.getElementById("setSizes").value = settings.containerSizes.join("\n");
     document.getElementById("setCarriers").value = settings.carriers.join("\n");
+    document.getElementById("setLineGroups").value = settings.lineGroupIds.join("\n");
   }
 }
 
@@ -1006,6 +1026,7 @@ async function saveSettings() {
         locations: lines("setLocations"),
         containerSizes: lines("setSizes"),
         carriers: lines("setCarriers"),
+        lineGroupIds: lines("setLineGroups"),
       }),
     });
     await loadAll();

@@ -53,6 +53,14 @@ async function initSchema() {
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS dispatch_type TEXT NOT NULL DEFAULT 'CY';
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS carrier TEXT NOT NULL DEFAULT '';
 
+    CREATE TABLE IF NOT EXISTS line_daily_index (
+      source_id TEXT NOT NULL,
+      seq INTEGER NOT NULL,
+      order_id TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (source_id, seq)
+    );
+
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
@@ -78,6 +86,7 @@ async function seedSettings() {
     locations: JSON.stringify(["高雄港", "台中港", "基隆港", "台北港", "台中倉庫", "台南倉庫", "屏東物流中心"]),
     container_sizes: JSON.stringify(["20 呎", "40 呎", "45 呎"]),
     carriers: JSON.stringify(["夏輝", "陽明", "天鵝湖"]),
+    line_group_ids: JSON.stringify([]),
   };
   for (const [key, value] of Object.entries(defaults)) {
     await pool.query(

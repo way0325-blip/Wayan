@@ -14,6 +14,8 @@ const vehicleRoutes = require("./routes/vehicles");
 const orderRoutes = require("./routes/orders");
 const settingsRoutes = require("./routes/settings");
 const auditLogRoutes = require("./routes/auditLogs");
+const lineWebhookRoutes = require("./routes/lineWebhook");
+const lineCronRoutes = require("./routes/lineCron");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -32,6 +34,11 @@ app.use(
     },
   })
 );
+
+// LINE webhook 一定要在 express.json() 之前掛載:它需要驗證「原始」的請求內容(簽章比對),
+// 一旦被 express.json() 解析過,原始 body 就拿不回來了。這個路由不需要 CORS、也不用一般 API 限流
+// (呼叫方是 LINE 的伺服器,不是瀏覽器)。
+app.use("/api/line", lineWebhookRoutes);
 
 const allowedOrigins = (process.env.CORS_ORIGIN || "")
   .split(",")
@@ -73,6 +80,7 @@ app.use("/api/vehicles", vehicleRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
+app.use("/api/line/cron", lineCronRoutes);
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 

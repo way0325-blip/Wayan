@@ -75,7 +75,7 @@ createdb wayan_dispatch_test   # 只需建立一次
 npm test
 ```
 
-測試共 15 項,涵蓋:健康檢查、登入、權限、派車與改派、輸入驗證、後台使用者管理與防呆、網站設定、批次匯入、調派類型與船公司、操作紀錄、CSV 注入防護、登入速率限制。
+測試共 21 項,涵蓋:健康檢查、登入、權限、派車與改派、輸入驗證、後台使用者管理與防呆、網站設定、批次匯入、調派類型與船公司、操作紀錄、CSV 注入防護、登入速率限制,以及 LINE 簽章驗證、查詢指令、推送、N號/貨櫃編號回報完成、定時報表(皆以模擬 LINE API 測試,不會真的打對外請求)。
 
 CI(GitHub Actions,見 `.github/workflows/ci.yml`)會在每次 push / PR 時,用一個臨時的 Postgres service container 自動執行 `npm run lint` 與 `npm test`。
 
@@ -101,6 +101,59 @@ CI(GitHub Actions,見 `.github/workflows/ci.yml`)會在每次 push / PR 時,用�
 - **網站內容設定**:系統名稱、儀表板公告、常用地點(建立訂單時的建議清單)、船公司、貨櫃尺寸(訂單驗證以此為準)。
 - **操作紀錄**:新增/修改/刪除/派車/改派/強制改狀態/批次匯入/登入都會記錄操作者、時間與內容(不記錄密碼),可依項目篩選。
 - **訂單批次匯入匯出**:CSV 匯入採「整批驗證、任一列錯誤則整批不寫入」,一次最多 500 筆;匯出會對 `= + - @` 開頭的儲存格加前綴,避免 Excel 公式注入。
+
+## LINE Bot
+
+系統內建 LINE Messaging API 整合,涵蓋四種用法:查詢指令、網頁一鍵推送、司機回報完成、定時報表。不設定 LINE 相關環境變數時,其餘功能完全不受影響,只是 LINE 功能會回傳「尚未設定」。
+
+### 1. 建立 LINE 頻道(需要你自己在 LINE 操作)
+1. 前往 [LINE Developers Console](https://developers.line.biz/console/),建立一個 Provider,再建立一個 **Messaging API** 頻道。
+2. 在頻道的 **Messaging API** 分頁:
+   - 記下 **Channel secret**(Basic settings 分頁)
+   - 產生並記下 **Channel access token(long-lived)**
+   - 把 **Webhook URL** 設成:`https://你的網域/api/line/webhook`,並開啟「Use webhook」
+   - 建議關閉「自動回應訊息」「加入好友的歡迎訊息」,避免跟 bot 的自訂回覆重複
+3. 把這個頻道的官方帳號加為好友,或直接邀請進 LINE 群組。
+
+### 2. 設定環境變數
+在 `.env`(或 Render 的 Environment)加入:
+```
+LINE_CHANNEL_SECRET=你的 Channel secret
+LINE_CHANNEL_ACCESS_TOKEN=你的 Channel access token
+CRON_SECRET=自己設一組隨機長字串
+```
+改完環境變數需要重新部署才會生效。
+
+### 3. 把 LINE 群組登記進系統
+把 bot 加入 LINE 群組後,bot 會自動回覆一則訊息,裡面附上這個群組的 ID(類似 `Cxxxxxxxx...`)。
+把這組 ID 貼到後台「⚙️ 後台管理 → 網站內容設定 → LINE 群組 ID」,存檔即可。可以填多個群組,一行一個。
+
+### 4. 四種用法
+| 用法 | 怎麼用 |
+|---|---|
+| **查詢型** | 在群組裡打:`待派車`、`已完成`、`統計`、`說明`,bot 會回覆網頁上的即時資料 |
+| **推送型** | 在「訂單與車趟」頁面勾選訂單(可整艘船一次勾),按「📲 推送到 LINE」,自動發送明細到所有登記的群組,不用手動複製貼上 |
+| **回報型** | 司機在群組回「N號完成」(N 是明細上的編號)或「完成 貨櫃編號」,bot 會自動把該訂單改成已完成、釋放司機與車輛,並記錄是誰用 LINE 回報的 |
+| **定時報表** | 見下方「定時報表的設定方式」 |
+
+### 5. 定時報表的設定方式
+系統本身**不會**自己每天定時發送(Render 免費方案閒置會休眠,內建排程不可靠),而是提供兩個由外部排程呼叫的端點:
+```
+POST /api/line/cron/daily    → 每日報表(目前待派車清單 + 今日統計)
+POST /api/line/cron/weekly   → 每週報表(近 7 天統計 + 目前待派車清單)
+```
+呼叫時要帶 header:`x-cron-secret: 你設定的 CRON_SECRET`。
+
+推薦用免費的外部排程服務(例如 [cron-job.org](https://cron-job.org))設定:
+- 每天早上 8 點呼叫一次 `/api/line/cron/daily`
+- 每週一早上呼叫一次 `/api/line/cron/weekly`
+
+呼叫本身也會把休眠中的免費方案網站喚醒,一舉兩得。若之後升級付費方案(常駐不休眠),也可以改成在程式內加排程,但目前先用外部觸發最簡單可靠。
+
+### 安全性
+- Webhook 一律驗證 LINE 的簽章(HMAC-SHA256),驗不過直接丟棄,不處理。
+- 報表端點需要正確的 `CRON_SECRET` 才能觸發,沒設定就一律拒絕。
+- 所有 LINE 訊息與回報都會寫入操作紀錄,方便事後追蹤是誰在什麼時間用 LINE 做了什麼。
 
 ## 環境變數
 
@@ -131,6 +184,9 @@ CI(GitHub Actions,見 `.github/workflows/ci.yml`)會在每次 push / PR 時,用�
 | GET | `/api/settings` | 網站設定 | 已登入 |
 | PUT | `/api/settings` | 修改網站設定 | **admin** |
 | GET | `/api/audit-logs` | 操作紀錄(`?limit=&entity=`) | **admin** |
+| POST | `/api/orders/push-line` | 把選定訂單推送到 LINE 群組 | 已登入 |
+| POST | `/api/line/webhook` | LINE Messaging API webhook(簽章驗證,非登入) | 公開(簽章驗證) |
+| POST | `/api/line/cron/daily` `/weekly` | 觸發定時報表(外部排程呼叫) | `x-cron-secret` |
 | PATCH | `/api/users/:id` | 改角色 / 停用啟用 / 重設密碼 | **admin** |
 | DELETE | `/api/orders/:id` | 刪除訂單 | **admin** |
 | GET | `/api/orders/export/csv` | 匯出訂單 CSV | 已登入 |

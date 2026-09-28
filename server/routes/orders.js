@@ -4,6 +4,8 @@ const { requireAuth, requireRole } = require("../auth");
 const { validateBody } = require("../validation");
 const { logAction } = require("../audit");
 const { getSettings } = require("../settings");
+const { serializeOrder, findOrder, completeOrder } = require("../orderService");
+const { pushDispatchList } = require("../line");
 
 const router = express.Router();
 
@@ -14,28 +16,6 @@ const ORDER_STATUSES = ["待派車", "已派車", "執行中", "已完成"];
 const DISPATCH_TYPES = ["CY", "船邊"];
 const TIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 const MAX_IMPORT_ROWS = 500;
-
-function serializeOrder(row) {
-  return {
-    id: row.id,
-    ship: row.ship,
-    container: row.container,
-    from: row.from_location,
-    to: row.to_location,
-    time: row.time,
-    size: row.size,
-    dispatchType: row.dispatch_type,
-    carrier: row.carrier,
-    status: row.status,
-    driverId: row.driver_id,
-    vehicleId: row.vehicle_id,
-  };
-}
-
-async function findOrder(id) {
-  const { rows } = await pool.query("SELECT * FROM orders WHERE id = $1", [id]);
-  return rows[0] || null;
-}
 
 async function checkSize(size) {
   const { container_sizes } = await getSettings();
@@ -326,18 +306,37 @@ router.patch("/:id/reassign", validateBody(dispatchSchema), async (req, res, nex
 
 router.patch("/:id/complete", async (req, res, next) => {
   try {
-    const order = await findOrder(req.params.id);
-    if (!order) return res.status(404).json({ error: "找不到此訂單" });
+    const { order, error } = await completeOrder(req.params.id, req.user);
+    if (error) return res.status(404).json({ error });
+    res.json(serializeOrder(order));
+  } catch (err) {
+    next(err);
+  }
+});
 
+// 把選定的訂單整理成明細文字,推送到後台設定好的 LINE 群組(不用手動複製貼上)
+router.post("/push-line", async (req, res, next) => {
+  try {
+    const ids = req.body?.orderIds;
+    if (!Array.isArray(ids) || !ids.length) {
+      return res.status(400).json({ error: "請至少選擇一筆訂單" });
+    }
     const { rows } = await pool.query(
-      "UPDATE orders SET status = '已完成' WHERE id = $1 RETURNING *",
-      [order.id]
+      "SELECT * FROM orders WHERE id = ANY($1::text[]) ORDER BY time",
+      [ids]
     );
-    if (order.driver_id) await pool.query("UPDATE drivers SET status = '可派車' WHERE id = $1", [order.driver_id]);
-    if (order.vehicle_id) await pool.query("UPDATE vehicles SET status = '可用' WHERE id = $1", [order.vehicle_id]);
+    if (!rows.length) return res.status(404).json({ error: "找不到指定的訂單" });
 
-    await logAction(req, "完成", "訂單", order.id, order.container);
-    res.json(serializeOrder(rows[0]));
+    const [driversRes, vehiclesRes] = await Promise.all([
+      pool.query("SELECT * FROM drivers"),
+      pool.query("SELECT * FROM vehicles"),
+    ]);
+
+    const result = await pushDispatchList(rows.map(serializeOrder), driversRes.rows, vehiclesRes.rows);
+    if (result.error) return res.status(400).json({ error: result.error });
+
+    await logAction(req, "推送LINE", "訂單", null, `${rows.length} 筆 → ${result.sentTo.join("、")}`);
+    res.json({ sent: rows.length, groups: result.sentTo });
   } catch (err) {
     next(err);
   }
