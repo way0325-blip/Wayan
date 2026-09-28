@@ -12,6 +12,8 @@ const userRoutes = require("./routes/users");
 const driverRoutes = require("./routes/drivers");
 const vehicleRoutes = require("./routes/vehicles");
 const orderRoutes = require("./routes/orders");
+const settingsRoutes = require("./routes/settings");
+const auditLogRoutes = require("./routes/auditLogs");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -69,6 +71,8 @@ app.use("/api/users", userRoutes);
 app.use("/api/drivers", driverRoutes);
 app.use("/api/vehicles", vehicleRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/settings", settingsRoutes);
+app.use("/api/audit-logs", auditLogRoutes);
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 

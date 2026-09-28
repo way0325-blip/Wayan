@@ -173,6 +173,15 @@ th { color: var(--cyan); font-weight: normal; }
 }
 .empty { padding: 25px; color: var(--muted); text-align: center; }
 .btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.notice { padding: 14px 16px; margin-bottom: 18px; border-radius: 12px; background: rgba(255,209,102,.12); border: 1px solid rgba(255,209,102,.35); color: var(--yellow); white-space: pre-wrap; }
+.tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+.tab { padding: 9px 14px; border-radius: 9px; background: #24415e; color: var(--muted); }
+.tab.active { background: var(--blue); color: white; }
+.subpanel { display: none; }
+.subpanel.active { display: block; }
+textarea { width: 100%; min-height: 90px; padding: 12px 13px; color: var(--text); background: #0a1b30; border: 1px solid var(--line); border-radius: 10px; font: inherit; }
+.hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+.ok-msg { color: var(--green); font-size: 13px; margin-left: 10px; }
 
 @media (max-width: 900px) {
   .sidebar { width: 190px; }
@@ -196,7 +205,7 @@ th { color: var(--cyan); font-weight: normal; }
 <section id="loginPage" class="login-page">
   <div class="login-box">
     <div class="logo">🚀</div>
-    <h1>港區星際運輸調度中心</h1>
+    <h1 id="loginTitle">港區星際運輸調度中心</h1>
     <p>PORT SPACE LOGISTICS CONTROL</p>
 
     <div id="loginError" class="alert hidden"></div>
@@ -220,7 +229,7 @@ th { color: var(--cyan); font-weight: normal; }
 <section id="app" class="app hidden">
   <aside class="sidebar">
     <div class="brand">
-      <strong>🚀 港區星際運輸</strong>
+      <strong id="brandName">🚀 港區星際運輸</strong>
       <small>DISPATCH CENTER</small>
     </div>
 
@@ -228,7 +237,7 @@ th { color: var(--cyan); font-weight: normal; }
     <button class="nav-btn" data-page="orders">📦 訂單與車趟</button>
     <button class="nav-btn" data-page="drivers">👨‍✈️ 司機管理</button>
     <button class="nav-btn" data-page="vehicles">🚚 車輛管理</button>
-    <button class="nav-btn admin-only hidden" data-page="users">🔑 使用者管理</button>
+    <button class="nav-btn admin-only hidden" data-page="users">⚙️ 後台管理</button>
     <button id="logoutBtn" class="nav-btn logout">↪ 登出系統</button>
   </aside>
 
@@ -242,6 +251,7 @@ th { color: var(--cyan); font-weight: normal; }
     </div>
 
     <section id="dashboard" class="page active">
+      <div id="announcementBox" class="notice hidden"></div>
       <div class="cards">
         <div class="card"><div class="card-title">今日訂單</div><div id="statOrders" class="card-value cyan">0</div></div>
         <div class="card"><div class="card-title">已完成車趟</div><div id="statDone" class="card-value green">0</div></div>
@@ -307,11 +317,47 @@ th { color: var(--cyan); font-weight: normal; }
     </section>
 
     <section id="users" class="page">
-      <div class="panel">
-        <div class="toolbar">
-          <button class="action" onclick="openUserModal()">＋ 新增使用者</button>
-        </div>
+      <div class="tabs">
+        <button class="tab active" data-sub="subUsers">使用者</button>
+        <button class="tab" data-sub="subSettings">網站內容設定</button>
+        <button class="tab" data-sub="subAudit">操作紀錄</button>
+        <button class="tab" data-sub="subBulk">訂單批次匯入匯出</button>
+      </div>
+
+      <div id="subUsers" class="panel subpanel active">
+        <div class="toolbar"><button class="action" onclick="openUserModal()">＋ 新增使用者</button></div>
         <div id="usersTable" class="table-wrap"></div>
+      </div>
+
+      <div id="subSettings" class="panel subpanel">
+        <div class="field"><label>系統名稱</label><input id="setName" maxlength="50"></div>
+        <div class="field"><label>公告(顯示在儀表板最上方,留空則不顯示)</label><textarea id="setAnnouncement" maxlength="500"></textarea></div>
+        <div class="field"><label>常用地點(一行一個,建立訂單時可快速選擇)</label><textarea id="setLocations"></textarea></div>
+        <div class="field"><label>貨櫃尺寸(一行一個)</label><textarea id="setSizes"></textarea><div class="hint">已存在的訂單不受影響;移除的尺寸只是不能再用於新訂單。</div></div>
+        <button class="action" onclick="saveSettings()">儲存設定</button><span id="settingsMsg" class="ok-msg"></span>
+      </div>
+
+      <div id="subAudit" class="panel subpanel">
+        <div class="toolbar">
+          <select id="auditEntity" onchange="loadAuditLogs()">
+            <option value="">全部項目</option><option>使用者</option><option>訂單</option><option>司機</option><option>車輛</option><option>網站設定</option>
+          </select>
+          <button class="action secondary" onclick="loadAuditLogs()">重新整理</button>
+        </div>
+        <div id="auditTable" class="table-wrap"></div>
+      </div>
+
+      <div id="subBulk" class="panel subpanel">
+        <h3>匯出</h3>
+        <button class="action secondary" onclick="exportCSV()">匯出全部訂單 CSV</button>
+        <h3 style="margin-top:24px">批次匯入訂單</h3>
+        <p class="hint">CSV 需要欄位:船名航次、貨櫃編號、起點、終點、作業時間(例如 2026-10-01 09:00)、尺寸。匯入的訂單一律是「待派車」。只要有一列錯誤,整批都不會寫入。</p>
+        <div class="toolbar">
+          <button class="action secondary" onclick="downloadTemplate()">下載範本</button>
+          <input id="importFile" type="file" accept=".csv,text/csv">
+          <button class="action" onclick="importOrders()">開始匯入</button>
+        </div>
+        <div id="importResult"></div>
       </div>
     </section>
   </main>
@@ -326,12 +372,12 @@ th { color: var(--cyan); font-weight: normal; }
       <div class="form-grid">
         <div class="field"><label>船名／航次</label><input id="orderShip" required placeholder="例如：EVER ACE / 012W"></div>
         <div class="field"><label>貨櫃編號</label><input id="orderContainer" required placeholder="例如：EMCU1234567"></div>
-        <div class="field"><label>起點</label><input id="orderFrom" required placeholder="例如：高雄港"></div>
-        <div class="field"><label>終點</label><input id="orderTo" required placeholder="例如：台中倉庫"></div>
+        <div class="field"><label>起點</label><input id="orderFrom" list="locationList" required placeholder="例如：高雄港"></div>
+        <div class="field"><label>終點</label><input id="orderTo" list="locationList" required placeholder="例如：台中倉庫"></div>
         <div class="field"><label>作業時間</label><input id="orderTime" type="datetime-local" required></div>
         <div class="field">
           <label>貨櫃尺寸</label>
-          <select id="orderSize"><option>20 呎</option><option>40 呎</option><option>45 呎</option></select>
+          <select id="orderSize"></select>
         </div>
       </div>
       <button id="orderSubmitBtn" class="primary">建立訂單</button>
@@ -339,12 +385,15 @@ th { color: var(--cyan); font-weight: normal; }
   </div>
 </div>
 
+<datalist id="locationList"></datalist>
+
 <div id="dispatchModal" class="modal hidden">
   <div class="modal-box">
-    <div class="modal-head"><h3>指定派車</h3><button class="close" onclick="closeModal('dispatchModal')">×</button></div>
+    <div class="modal-head"><h3 id="dispatchTitle">指定派車</h3><button class="close" onclick="closeModal('dispatchModal')">×</button></div>
     <div id="dispatchInfo" class="alert"></div>
     <form id="dispatchForm">
       <input id="dispatchOrderId" type="hidden">
+      <input id="dispatchMode" type="hidden" value="dispatch">
       <div class="field"><label>選擇司機</label><select id="dispatchDriver" required></select></div>
       <div class="field"><label>選擇車輛</label><select id="dispatchVehicle" required></select></div>
       <button class="primary">確認派車</button>
@@ -380,13 +429,28 @@ th { color: var(--cyan); font-weight: normal; }
   </div>
 </div>
 
+<div id="statusModal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head"><h3>強制修改訂單狀態</h3><button class="close" onclick="closeModal('statusModal')">×</button></div>
+    <div id="statusInfo" class="alert"></div>
+    <div class="hint" style="margin-bottom:12px">改為「待派車」會清除司機與車輛並釋放資源;改為「已完成」會釋放資源。此操作會記錄在操作紀錄。</div>
+    <form id="statusForm">
+      <input id="statusOrderId" type="hidden">
+      <div class="field"><label>新狀態</label>
+        <select id="statusValue"><option>待派車</option><option>已派車</option><option>執行中</option><option>已完成</option></select>
+      </div>
+      <button class="primary">確認修改</button>
+    </form>
+  </div>
+</div>
+
 <div id="userModal" class="modal hidden">
   <div class="modal-box">
     <div class="modal-head"><h3>新增使用者</h3><button class="close" onclick="closeModal('userModal')">×</button></div>
     <div id="userModalError" class="alert hidden"></div>
     <form id="userForm">
       <div class="field"><label>帳號</label><input id="userUsername" required></div>
-      <div class="field"><label>密碼(至少 4 碼)</label><input id="userPassword" type="password" required></div>
+      <div class="field"><label>密碼(至少 6 碼)</label><input id="userPassword" type="password" required></div>
       <div class="field">
         <label>角色</label>
         <select id="userRole">
@@ -409,6 +473,7 @@ let drivers = [];
 let vehicles = [];
 let orders = [];
 let users = [];
+let settings = { systemName: "港區星際運輸調度中心", announcement: "", locations: [], containerSizes: ["20 呎", "40 呎", "45 呎"] };
 
 function getToken() { return localStorage.getItem("token"); }
 function getRole() { return localStorage.getItem("role"); }
@@ -463,17 +528,18 @@ function statusBadge(status) {
 }
 
 async function loadAll() {
-  const calls = [api("/api/drivers"), api("/api/vehicles"), api("/api/orders")];
+  const calls = [api("/api/drivers"), api("/api/vehicles"), api("/api/orders"), api("/api/settings")];
   if (isAdmin()) calls.push(api("/api/users"));
 
   const results = await Promise.all(calls);
-  [drivers, vehicles, orders] = results;
-  if (isAdmin()) users = results[3];
+  [drivers, vehicles, orders, settings] = results;
+  if (isAdmin()) users = results[4];
 
   refresh();
 }
 
 function refresh() {
+  applySettings();
   renderDashboard();
   renderOrders();
   renderDrivers();
@@ -530,8 +596,10 @@ function orderTable(list, showActions = true) {
           actions.push(`<button class="action secondary small" onclick="openOrderModal('${o.id}')">編輯</button>`);
         } else if (o.status !== "已完成") {
           actions.push(`<button class="action secondary small" onclick="completeOrder('${o.id}')">完成</button>`);
+          actions.push(`<button class="action secondary small" onclick="openDispatchModal('${o.id}', 'reassign')">改派</button>`);
         }
         if (isAdmin()) {
+          actions.push(`<button class="action secondary small" onclick="openStatusModal('${o.id}')">改狀態</button>`);
           actions.push(`<button class="action danger small" onclick="deleteOrder('${o.id}')">刪除</button>`);
         }
 
@@ -600,16 +668,194 @@ function renderVehicles() {
 function renderUsers() {
   document.getElementById("usersTable").innerHTML = `
   <table>
-    <thead><tr><th>編號</th><th>帳號</th><th>角色</th><th>操作</th></tr></thead>
+    <thead><tr><th>編號</th><th>帳號</th><th>角色</th><th>狀態</th><th>操作</th></tr></thead>
     <tbody>
       ${users.map(u => `
       <tr>
         <td>${u.id}</td><td>${escapeHTML(u.username)}</td>
-        <td><span class="badge ${u.role === 'admin' ? 'green' : ''}">${u.role === 'admin' ? '管理員' : '調度員'}</span></td>
-        <td><button class="action danger small" onclick="deleteUser(${u.id})">刪除</button></td>
+        <td>
+          <select style="width:auto;padding:6px 8px" onchange="changeUserRole(${u.id}, this.value)">
+            <option value="dispatcher" ${u.role === "dispatcher" ? "selected" : ""}>調度員</option>
+            <option value="admin" ${u.role === "admin" ? "selected" : ""}>管理員</option>
+          </select>
+        </td>
+        <td>${u.active ? '<span class="badge green">啟用中</span>' : '<span class="badge red">已停用</span>'}</td>
+        <td><div class="btn-row">
+          <button class="action secondary small" onclick="toggleUserActive(${u.id}, ${!u.active})">${u.active ? "停用" : "啟用"}</button>
+          <button class="action secondary small" onclick="resetUserPassword(${u.id})">重設密碼</button>
+          <button class="action danger small" onclick="deleteUser(${u.id})">刪除</button>
+        </div></td>
       </tr>`).join("")}
     </tbody>
   </table>`;
+}
+
+async function changeUserRole(id, role) {
+  try { await api(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify({ role }) }); }
+  catch (err) { alert(err.message); }
+  await loadAll();
+}
+
+async function toggleUserActive(id, active) {
+  if (!active && !confirm("停用後此帳號會立刻被登出且無法登入,確定嗎?")) return;
+  try { await api(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify({ active }) }); }
+  catch (err) { alert(err.message); }
+  await loadAll();
+}
+
+async function resetUserPassword(id) {
+  const password = prompt("請輸入新密碼(至少 6 碼):");
+  if (!password) return;
+  try {
+    await api(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify({ password }) });
+    alert("密碼已重設,請用安全的方式通知對方。");
+  } catch (err) { alert(err.message); }
+}
+
+function applySettings() {
+  document.title = settings.systemName;
+  document.getElementById("loginTitle").textContent = settings.systemName;
+  document.getElementById("brandName").textContent = "🚀 " + settings.systemName;
+
+  const box = document.getElementById("announcementBox");
+  box.textContent = settings.announcement ? "📢 " + settings.announcement : "";
+  box.classList.toggle("hidden", !settings.announcement);
+
+  document.getElementById("locationList").innerHTML =
+    settings.locations.map(l => `<option value="${escapeHTML(l)}"></option>`).join("");
+
+  const sizeSelect = document.getElementById("orderSize");
+  const current = sizeSelect.value;
+  sizeSelect.innerHTML = settings.containerSizes.map(x => `<option>${escapeHTML(x)}</option>`).join("");
+  if (current) sizeSelect.value = current;
+
+  if (isAdmin() && document.activeElement?.closest?.("#subSettings") == null) {
+    document.getElementById("setName").value = settings.systemName;
+    document.getElementById("setAnnouncement").value = settings.announcement;
+    document.getElementById("setLocations").value = settings.locations.join("\n");
+    document.getElementById("setSizes").value = settings.containerSizes.join("\n");
+  }
+}
+
+async function loadPublicSettings() {
+  try {
+    const res = await fetch("/api/settings/public");
+    if (res.ok) {
+      settings.systemName = (await res.json()).systemName;
+      document.title = settings.systemName;
+      document.getElementById("loginTitle").textContent = settings.systemName;
+    }
+  } catch (e) { /* 離線時維持預設名稱 */ }
+}
+
+const lines = id => document.getElementById(id).value.split("\n").map(v => v.trim()).filter(Boolean);
+
+async function saveSettings() {
+  const msg = document.getElementById("settingsMsg");
+  msg.textContent = "";
+  try {
+    await api("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify({
+        systemName: document.getElementById("setName").value,
+        announcement: document.getElementById("setAnnouncement").value,
+        locations: lines("setLocations"),
+        containerSizes: lines("setSizes"),
+      }),
+    });
+    await loadAll();
+    msg.textContent = "已儲存 ✓";
+  } catch (err) { alert(err.message); }
+}
+
+async function loadAuditLogs() {
+  const entity = document.getElementById("auditEntity").value;
+  try {
+    const logs = await api("/api/audit-logs?limit=200" + (entity ? "&entity=" + encodeURIComponent(entity) : ""));
+    document.getElementById("auditTable").innerHTML = logs.length ? `
+      <table>
+        <thead><tr><th>時間</th><th>操作者</th><th>動作</th><th>項目</th><th>編號</th><th>內容</th></tr></thead>
+        <tbody>${logs.map(l => `
+          <tr>
+            <td>${new Date(l.at).toLocaleString("zh-TW", { hour12: false })}</td>
+            <td>${escapeHTML(l.username)}(${l.role === "admin" ? "管理員" : "調度員"})</td>
+            <td>${escapeHTML(l.action)}</td><td>${escapeHTML(l.entity)}</td>
+            <td>${escapeHTML(l.entity_id || "-")}</td><td>${escapeHTML(l.detail || "")}</td>
+          </tr>`).join("")}</tbody>
+      </table>` : `<div class="empty">目前沒有紀錄</div>`;
+  } catch (err) { alert(err.message); }
+}
+
+function parseCSV(text) {
+  text = text.replace(/^\ufeff/, "");
+  const rows = []; let row = [], cur = "", inQ = false;
+  const pushRow = () => { row.push(cur); cur = ""; if (row.some(v => v.trim() !== "")) rows.push(row); row = []; };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else inQ = false; }
+      else cur += c;
+    } else if (c === '"') inQ = true;
+    else if (c === ",") { row.push(cur); cur = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; pushRow(); }
+    else cur += c;
+  }
+  pushRow();
+  return rows;
+}
+
+function downloadTemplate() {
+  const csv = "\ufeff船名航次,貨櫃編號,起點,終點,作業時間,尺寸\nEVER ACE / 012W,EMCU1234567,高雄港,台中倉庫,2026-10-01 09:00,40 呎\n";
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  link.download = "訂單匯入範本.csv";
+  link.click();
+}
+
+async function importOrders() {
+  const out = document.getElementById("importResult");
+  const file = document.getElementById("importFile").files[0];
+  if (!file) { alert("請先選擇 CSV 檔案"); return; }
+
+  const table = parseCSV(await file.text());
+  if (table.length < 2) { out.innerHTML = `<div class="alert">檔案沒有資料列</div>`; return; }
+
+  const map = { "船名航次": "ship", "船名／航次": "ship", "貨櫃編號": "container", "起點": "from", "終點": "to", "作業時間": "time", "尺寸": "size", "貨櫃尺寸": "size" };
+  const cols = table[0].map(h => map[h.trim()]);
+  const missing = ["ship", "container", "from", "to", "time", "size"].filter(k => !cols.includes(k));
+  if (missing.length) { out.innerHTML = `<div class="alert">缺少欄位,請確認表頭與範本一致</div>`; return; }
+
+  const rows = table.slice(1).map(r => {
+    const o = {};
+    cols.forEach((k, i) => { if (k) o[k] = (r[i] ?? "").replace(/^'(?=[=+\-@])/, ""); });
+    return o;
+  });
+
+  const res = await fetch("/api/orders/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + getToken() },
+    body: JSON.stringify({ rows }),
+  });
+  const data = await res.json();
+
+  if (res.ok) {
+    out.innerHTML = `<div class="notice" style="color:var(--green);border-color:rgba(66,230,164,.4);background:rgba(66,230,164,.1)">匯入成功,共 ${data.imported} 筆</div>`;
+    document.getElementById("importFile").value = "";
+    await loadAll();
+  } else {
+    const detail = Array.isArray(data.details)
+      ? data.details.slice(0, 20).map(d => `<div>第 ${d.row} 列:${escapeHTML(d.problems.join("、"))}</div>`).join("")
+      : "";
+    out.innerHTML = `<div class="alert"><b>${escapeHTML(data.error || "匯入失敗")}</b>${detail}</div>`;
+  }
+}
+
+function openStatusModal(orderId) {
+  const order = orders.find(o => o.id === orderId);
+  document.getElementById("statusOrderId").value = orderId;
+  document.getElementById("statusInfo").textContent = `${order.id}｜${order.container}｜目前狀態:${order.status}`;
+  document.getElementById("statusValue").value = order.status;
+  document.getElementById("statusModal").classList.remove("hidden");
 }
 
 function openOrderModal(orderId) {
@@ -624,7 +870,12 @@ function openOrderModal(orderId) {
   document.getElementById("orderFrom").value = order?.from || "";
   document.getElementById("orderTo").value = order?.to || "";
   document.getElementById("orderTime").value = order?.time || "";
-  document.getElementById("orderSize").value = order?.size || "20 呎";
+  const sizeSelect = document.getElementById("orderSize");
+  const wantedSize = order?.size || settings.containerSizes[0];
+  if (![...sizeSelect.options].some(o => o.value === wantedSize)) {
+    sizeSelect.add(new Option(wantedSize + "(已停用)", wantedSize));
+  }
+  sizeSelect.value = wantedSize;
 
   document.getElementById("orderModal").classList.remove("hidden");
 }
@@ -665,20 +916,21 @@ function openUserModal() {
 
 function closeModal(id) { document.getElementById(id).classList.add("hidden"); }
 
-function openDispatchModal(orderId) {
+function openDispatchModal(orderId, mode = "dispatch") {
   const order = orders.find(o => o.id === orderId);
+  const reassign = mode === "reassign";
   document.getElementById("dispatchOrderId").value = orderId;
+  document.getElementById("dispatchMode").value = mode;
+  document.getElementById("dispatchTitle").textContent = reassign ? "改派司機／車輛" : "指定派車";
   document.getElementById("dispatchInfo").textContent =
     `${order.id}｜${order.from} → ${order.to}｜${formatDate(order.time)}`;
 
-  document.getElementById("dispatchDriver").innerHTML =
-    `<option value="">請選擇司機</option>` +
-    drivers.map(d => `<option value="${d.id}">${escapeHTML(d.name)}｜${d.status}</option>`).join("");
+  const pick = (list, currentId, label) =>
+    `<option value="">${label}</option>` +
+    list.map(x => `<option value="${x.id}" ${x.id === currentId ? "selected" : ""}>${escapeHTML(x.name || x.plate)}｜${x.status}${x.id === currentId ? "(目前)" : ""}</option>`).join("");
 
-  document.getElementById("dispatchVehicle").innerHTML =
-    `<option value="">請選擇車輛</option>` +
-    vehicles.map(v => `<option value="${v.id}">${escapeHTML(v.plate)}｜${v.status}</option>`).join("");
-
+  document.getElementById("dispatchDriver").innerHTML = pick(drivers, reassign ? order.driverId : null, "請選擇司機");
+  document.getElementById("dispatchVehicle").innerHTML = pick(vehicles, reassign ? order.vehicleId : null, "請選擇車輛");
   document.getElementById("dispatchModal").classList.remove("hidden");
 }
 
@@ -812,10 +1064,30 @@ document.querySelectorAll(".nav-btn[data-page]").forEach(button => {
       orders: "訂單與車趟管理",
       drivers: "司機資料管理",
       vehicles: "車輛資料管理",
-      users: "使用者管理",
+      users: "後台管理",
     };
     document.getElementById("pageTitle").textContent = titles[button.dataset.page];
   });
+});
+
+document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => {
+  document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+  document.querySelectorAll(".subpanel").forEach(x => x.classList.remove("active"));
+  t.classList.add("active");
+  document.getElementById(t.dataset.sub).classList.add("active");
+  if (t.dataset.sub === "subAudit") loadAuditLogs();
+}));
+
+document.getElementById("statusForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  try {
+    await api(`/api/orders/${document.getElementById("statusOrderId").value}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: document.getElementById("statusValue").value }),
+    });
+    await loadAll();
+    closeModal("statusModal");
+  } catch (err) { alert(err.message); }
 });
 
 document.getElementById("orderSearch").addEventListener("input", renderOrders);
@@ -858,15 +1130,16 @@ document.getElementById("dispatchForm").addEventListener("submit", async e => {
   const vehicleId = document.getElementById("dispatchVehicle").value;
 
   try {
-    await api(`/api/orders/${orderId}/dispatch`, {
+    const mode = document.getElementById("dispatchMode").value;
+    await api(`/api/orders/${orderId}/${mode}`, {
       method: "PATCH",
       body: JSON.stringify({ driverId, vehicleId }),
     });
     await loadAll();
     closeModal("dispatchModal");
-    alert("派車成功");
+    alert(mode === "reassign" ? "改派成功" : "派車成功");
   } catch (err) {
-    alert("派車失敗：\n\n・" + err.message);
+    alert("操作失敗：\n\n・" + err.message);
   }
 });
 
@@ -946,6 +1219,8 @@ document.getElementById("userForm").addEventListener("submit", async e => {
     errorBox.classList.remove("hidden");
   }
 });
+
+loadPublicSettings();
 
 // 啟動:若已有 token 直接嘗試載入資料,失敗則回到登入頁
 (async function init() {

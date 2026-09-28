@@ -48,7 +48,40 @@ async function initSchema() {
       driver_id TEXT REFERENCES drivers(id),
       vehicle_id TEXT REFERENCES vehicles(id)
     );
+
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id SERIAL PRIMARY KEY,
+      at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      username TEXT NOT NULL,
+      role TEXT NOT NULL,
+      action TEXT NOT NULL,
+      entity TEXT NOT NULL,
+      entity_id TEXT,
+      detail TEXT
+    );
   `);
+}
+
+async function seedSettings() {
+  const defaults = {
+    system_name: "港區星際運輸調度中心",
+    announcement: "",
+    locations: JSON.stringify(["高雄港", "台中港", "基隆港", "台北港", "台中倉庫", "台南倉庫", "屏東物流中心"]),
+    container_sizes: JSON.stringify(["20 呎", "40 呎", "45 呎"]),
+  };
+  for (const [key, value] of Object.entries(defaults)) {
+    await pool.query(
+      "INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING",
+      [key, value]
+    );
+  }
 }
 
 async function seedIfEmpty() {
@@ -106,6 +139,7 @@ async function seedIfEmpty() {
 
 async function initDb() {
   await initSchema();
+  await seedSettings();
   await seedIfEmpty();
 }
 

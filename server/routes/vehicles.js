@@ -2,6 +2,7 @@ const express = require("express");
 const { pool } = require("../db");
 const { requireAuth, requireRole } = require("../auth");
 const { validateBody } = require("../validation");
+const { logAction } = require("../audit");
 
 const router = express.Router();
 
@@ -32,6 +33,7 @@ router.post("/", validateBody(createSchema), async (req, res, next) => {
       [id, plate, type, maintenance]
     );
 
+    await logAction(req, "新增", "車輛", id, plate);
     res.status(201).json(rows[0]);
   } catch (err) {
     next(err);
@@ -59,6 +61,7 @@ router.patch(
         [plate, type, maintenance, status, req.params.id]
       );
 
+      await logAction(req, "修改", "車輛", req.params.id, plate);
       res.json(rows[0]);
     } catch (err) {
       next(err);
@@ -79,6 +82,7 @@ router.delete("/:id", requireRole("admin"), async (req, res, next) => {
     const result = await pool.query("DELETE FROM vehicles WHERE id = $1", [req.params.id]);
     if (result.rowCount === 0) return res.status(404).json({ error: "找不到此車輛" });
 
+    await logAction(req, "刪除", "車輛", req.params.id, null);
     res.status(204).send();
   } catch (err) {
     next(err);

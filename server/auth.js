@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const { pool } = require("./db");
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -16,7 +17,7 @@ function generateToken(user) {
   );
 }
 
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
 
@@ -24,11 +25,27 @@ function requireAuth(req, res, next) {
     return res.status(401).json({ error: "未登入或憑證遺失" });
   }
 
+  let payload;
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
-    next();
+    payload = jwt.verify(token, JWT_SECRET);
   } catch (err) {
     return res.status(401).json({ error: "登入已過期,請重新登入" });
+  }
+
+  try {
+    // 每次都以資料庫為準:帳號被停用或角色被調整時,立即生效,不必等 token 過期
+    const { rows } = await pool.query(
+      "SELECT id, username, role, active FROM users WHERE id = $1",
+      [payload.sub]
+    );
+    const user = rows[0];
+    if (!user || !user.active) {
+      return res.status(401).json({ error: "帳號已停用或不存在" });
+    }
+    req.user = { sub: user.id, username: user.username, role: user.role };
+    next();
+  } catch (err) {
+    next(err);
   }
 }
 

@@ -16,8 +16,10 @@ Node.js + Express + PostgreSQL 全端版本,基於原本的靜態 HTML 展示版
 | 登入、瀏覽儀表板/訂單/司機/車輛 | ✅ | ✅ |
 | 新增/編輯訂單、司機、車輛 | ✅ | ✅ |
 | 指定派車、完成訂單 | ✅ | ✅ |
+| 改派司機/車輛、批次匯入訂單、匯出 CSV | ✅ | ✅ |
 | **刪除**訂單、司機、車輛 | ✅ | ❌ |
-| 管理使用者帳號(新增/刪除/列表) | ✅ | ❌ |
+| 強制修改訂單狀態 | ✅ | ❌ |
+| 後台管理:使用者(改角色/停用/重設密碼)、網站內容設定、操作紀錄 | ✅ | ❌ |
 
 資料庫第一次啟動時,會依 `.env` 的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 種子出一個 **admin** 帳號。之後請透過「使用者管理」頁面(或 `/api/users`)新增其他帳號,不要繼續共用預設帳密。
 
@@ -73,9 +75,16 @@ createdb wayan_dispatch_test   # 只需建立一次
 npm test
 ```
 
-測試涵蓋:健康檢查、登入成功/失敗、未登入擋 API、派車流程、角色權限(dispatcher 不能刪除/管理使用者)、輸入驗證、登入速率限制。
+測試共 14 項,涵蓋:健康檢查、登入、權限、派車與改派、輸入驗證、後台使用者管理與防呆、網站設定、批次匯入、操作紀錄、CSV 注入防護、登入速率限制。
 
 CI(GitHub Actions,見 `.github/workflows/ci.yml`)會在每次 push / PR 時,用一個臨時的 Postgres service container 自動執行 `npm run lint` 與 `npm test`。
+
+## 後台管理(admin 專用,前端「⚙️ 後台管理」)
+
+- **使用者**:新增、修改角色、停用/啟用、重設密碼、刪除。角色與停用狀態每次請求都以資料庫為準,**停用後立即生效**(舊 token 也會被拒絕)。不可停用/降級自己,也不可移除最後一位啟用中的管理員。
+- **網站內容設定**:系統名稱、儀表板公告、常用地點(建立訂單時的建議清單)、貨櫃尺寸(訂單驗證以此為準)。
+- **操作紀錄**:新增/修改/刪除/派車/改派/強制改狀態/批次匯入/登入都會記錄操作者、時間與內容(不記錄密碼),可依項目篩選。
+- **訂單批次匯入匯出**:CSV 匯入採「整批驗證、任一列錯誤則整批不寫入」,一次最多 500 筆;匯出會對 `= + - @` 開頭的儲存格加前綴,避免 Excel 公式注入。
 
 ## 環境變數
 
@@ -99,6 +108,14 @@ CI(GitHub Actions,見 `.github/workflows/ci.yml`)會在每次 push / PR 時,用�
 | PATCH | `/api/orders/:id` | 編輯訂單基本資料(僅限「待派車」狀態) | 已登入 |
 | PATCH | `/api/orders/:id/dispatch` | 指定派車(含衝突檢查) | 已登入 |
 | PATCH | `/api/orders/:id/complete` | 完成訂單 | 已登入 |
+| PATCH | `/api/orders/:id/reassign` | 改派司機/車輛(已派車/執行中) | 已登入 |
+| PATCH | `/api/orders/:id/status` | 強制修改狀態 | **admin** |
+| POST | `/api/orders/import` | 批次匯入訂單(JSON rows) | 已登入 |
+| GET | `/api/settings/public` | 系統名稱(登入頁用) | 公開 |
+| GET | `/api/settings` | 網站設定 | 已登入 |
+| PUT | `/api/settings` | 修改網站設定 | **admin** |
+| GET | `/api/audit-logs` | 操作紀錄(`?limit=&entity=`) | **admin** |
+| PATCH | `/api/users/:id` | 改角色 / 停用啟用 / 重設密碼 | **admin** |
 | DELETE | `/api/orders/:id` | 刪除訂單 | **admin** |
 | GET | `/api/orders/export/csv` | 匯出訂單 CSV | 已登入 |
 | GET | `/api/drivers` | 取得司機列表 | 已登入 |
