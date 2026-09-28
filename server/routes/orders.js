@@ -10,6 +10,8 @@ const router = express.Router();
 router.use(requireAuth);
 
 const ORDER_STATUSES = ["待派車", "已派車", "執行中", "已完成"];
+// 調派類型:CY = 貨櫃場 → 客戶端;船邊 = 碼頭 → 貨櫃場
+const DISPATCH_TYPES = ["CY", "船邊"];
 const TIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 const MAX_IMPORT_ROWS = 500;
 
@@ -22,6 +24,8 @@ function serializeOrder(row) {
     to: row.to_location,
     time: row.time,
     size: row.size,
+    dispatchType: row.dispatch_type,
+    carrier: row.carrier,
     status: row.status,
     driverId: row.driver_id,
     vehicleId: row.vehicle_id,
@@ -38,6 +42,11 @@ async function checkSize(size) {
   return container_sizes.includes(size)
     ? null
     : `貨櫃尺寸必須是:${container_sizes.join("、")}`;
+}
+
+async function checkCarrier(carrier) {
+  const { carriers } = await getSettings();
+  return carriers.includes(carrier) ? null : `船公司必須是:${carriers.join("、")}`;
 }
 
 router.get("/", async (req, res, next) => {
@@ -58,22 +67,24 @@ router.post(
     to: { required: true, type: "string", maxLength: 100, label: "終點" },
     time: { required: true, type: "date", label: "作業時間" },
     size: { required: true, type: "string", label: "貨櫃尺寸" },
+    dispatchType: { required: true, enum: DISPATCH_TYPES, label: "調派類型" },
+    carrier: { required: true, type: "string", maxLength: 30, label: "船公司" },
   }),
   async (req, res, next) => {
     try {
-      const { ship, container, from, to, time, size } = req.body;
+      const { ship, container, from, to, time, size, dispatchType, carrier } = req.body;
 
-      const sizeError = await checkSize(size);
-      if (sizeError) return res.status(400).json({ error: "輸入驗證失敗", details: [sizeError] });
+      const problems = [await checkSize(size), await checkCarrier(carrier)].filter(Boolean);
+      if (problems.length) return res.status(400).json({ error: "輸入驗證失敗", details: problems });
 
       const id = "O" + Date.now();
       const { rows } = await pool.query(
-        `INSERT INTO orders (id, ship, container, from_location, to_location, time, size, status, driver_id, vehicle_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, '待派車', NULL, NULL) RETURNING *`,
-        [id, ship, container, from, to, time, size]
+        `INSERT INTO orders (id, ship, container, from_location, to_location, time, size, status, driver_id, vehicle_id, dispatch_type, carrier)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, '待派車', NULL, NULL, $8, $9) RETURNING *`,
+        [id, ship, container, from, to, time, size, dispatchType, carrier]
       );
 
-      await logAction(req, "新增", "訂單", id, `${container} ${from}→${to}`);
+      await logAction(req, "新增", "訂單", id, `${dispatchType}|${carrier}|${container} ${from}→${to}`);
       res.status(201).json(serializeOrder(rows[0]));
     } catch (err) {
       next(err);
@@ -93,7 +104,7 @@ router.post("/import", async (req, res, next) => {
       return res.status(400).json({ error: `一次最多匯入 ${MAX_IMPORT_ROWS} 筆` });
     }
 
-    const { container_sizes } = await getSettings();
+    const { container_sizes, carriers } = await getSettings();
     const errors = [];
     const clean = rows.map((r, i) => {
       const item = {
@@ -103,6 +114,8 @@ router.post("/import", async (req, res, next) => {
         to: String(r.to ?? "").trim(),
         time: String(r.time ?? "").trim().replace(" ", "T"),
         size: String(r.size ?? "").trim(),
+        dispatchType: String(r.dispatchType ?? "").trim().toUpperCase() === "CY" ? "CY" : String(r.dispatchType ?? "").trim(),
+        carrier: String(r.carrier ?? "").trim(),
       };
       const problems = [];
       if (!item.ship || item.ship.length > 100) problems.push("船名／航次必填且不可超過 100 字");
@@ -113,6 +126,8 @@ router.post("/import", async (req, res, next) => {
         problems.push("作業時間格式需為 YYYY-MM-DD HH:MM");
       }
       if (!container_sizes.includes(item.size)) problems.push(`尺寸必須是:${container_sizes.join("、")}`);
+      if (!DISPATCH_TYPES.includes(item.dispatchType)) problems.push(`調派類型必須是:${DISPATCH_TYPES.join("、")}`);
+      if (!carriers.includes(item.carrier)) problems.push(`船公司必須是:${carriers.join("、")}`);
       if (problems.length) errors.push({ row: i + 1, problems });
       return item;
     });
@@ -126,9 +141,9 @@ router.post("/import", async (req, res, next) => {
     for (let i = 0; i < clean.length; i++) {
       const o = clean[i];
       await client.query(
-        `INSERT INTO orders (id, ship, container, from_location, to_location, time, size, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, '待派車')`,
-        [`O${base}${String(i).padStart(3, "0")}`, o.ship, o.container, o.from, o.to, o.time, o.size]
+        `INSERT INTO orders (id, ship, container, from_location, to_location, time, size, status, dispatch_type, carrier)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, '待派車', $8, $9)`,
+        [`O${base}${String(i).padStart(3, "0")}`, o.ship, o.container, o.from, o.to, o.time, o.size, o.dispatchType, o.carrier]
       );
     }
     await client.query("COMMIT");
@@ -153,6 +168,8 @@ router.patch(
     to: { type: "string", maxLength: 100, label: "終點" },
     time: { type: "date", label: "作業時間" },
     size: { type: "string", label: "貨櫃尺寸" },
+    dispatchType: { enum: DISPATCH_TYPES, label: "調派類型" },
+    carrier: { type: "string", maxLength: 30, label: "船公司" },
   }),
   async (req, res, next) => {
     try {
@@ -169,15 +186,21 @@ router.patch(
         to: toLocation = order.to_location,
         time = order.time,
         size = order.size,
+        dispatchType = order.dispatch_type,
+        carrier = order.carrier,
       } = req.body || {};
 
-      const sizeError = await checkSize(size);
-      if (sizeError) return res.status(400).json({ error: "輸入驗證失敗", details: [sizeError] });
+      const problems = [];
+      if (size !== order.size) problems.push(await checkSize(size));
+      if (carrier !== order.carrier) problems.push(await checkCarrier(carrier));
+      const failed = problems.filter(Boolean);
+      if (failed.length) return res.status(400).json({ error: "輸入驗證失敗", details: failed });
 
       const { rows } = await pool.query(
-        `UPDATE orders SET ship = $1, container = $2, from_location = $3, to_location = $4, time = $5, size = $6
-         WHERE id = $7 RETURNING *`,
-        [ship, container, fromLocation, toLocation, time, size, req.params.id]
+        `UPDATE orders SET ship = $1, container = $2, from_location = $3, to_location = $4, time = $5, size = $6,
+           dispatch_type = $7, carrier = $8
+         WHERE id = $9 RETURNING *`,
+        [ship, container, fromLocation, toLocation, time, size, dispatchType, carrier, req.params.id]
       );
 
       await logAction(req, "修改", "訂單", order.id, `${container} ${fromLocation}→${toLocation}`);
@@ -384,9 +407,9 @@ router.delete("/:id", requireRole("admin"), async (req, res, next) => {
 router.get("/export/csv", async (req, res, next) => {
   try {
     const { rows } = await pool.query("SELECT * FROM orders ORDER BY id");
-    const header = ["訂單編號", "船名航次", "貨櫃編號", "起點", "終點", "作業時間", "尺寸", "狀態"];
+    const header = ["訂單編號", "船公司", "調派類型", "船名航次", "貨櫃編號", "起點", "終點", "作業時間", "尺寸", "狀態"];
     const csvRows = rows.map((o) => [
-      o.id, o.ship, o.container, o.from_location, o.to_location, o.time, o.size, o.status,
+      o.id, o.carrier, o.dispatch_type, o.ship, o.container, o.from_location, o.to_location, o.time, o.size, o.status,
     ]);
 
     // 以 = + - @ 開頭的儲存格會被 Excel 當成公式執行,匯出時加前綴避免 CSV 注入

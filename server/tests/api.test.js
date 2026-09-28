@@ -162,7 +162,7 @@ test("settings: admin edits content; new container size is accepted by orders", 
   assert.ok(pub.data.systemName);
   assert.strictEqual(pub.data.announcement, undefined);
 
-  const bad = await call("POST", "/api/orders", ops, { ship: "S", container: "C1", from: "A", to: "B", time: "2026-10-01T09:00", size: "53 呎" });
+  const bad = await call("POST", "/api/orders", ops, { ship: "S", container: "C1", from: "A", to: "B", time: "2026-10-01T09:00", size: "53 呎", dispatchType: "CY", carrier: "陽明" });
   assert.strictEqual(bad.status, 400);
 
   const put = await call("PUT", "/api/settings", admin, {
@@ -174,7 +174,7 @@ test("settings: admin edits content; new container size is accepted by orders", 
   assert.strictEqual(put.status, 200);
   assert.deepStrictEqual(put.data.locations, ["高雄港", "台中港"]);
 
-  const good = await call("POST", "/api/orders", ops, { ship: "S", container: "C1", from: "A", to: "B", time: "2026-10-01T09:00", size: "53 呎" });
+  const good = await call("POST", "/api/orders", ops, { ship: "S", container: "C1", from: "A", to: "B", time: "2026-10-01T09:00", size: "53 呎", dispatchType: "CY", carrier: "陽明" });
   assert.strictEqual(good.status, 201);
 
   assert.strictEqual((await call("PUT", "/api/settings", admin, { systemName: "" })).status, 400);
@@ -188,7 +188,7 @@ test("batch import: valid rows are inserted, any invalid row rejects the whole b
 
   const bad = await call("POST", "/api/orders/import", ops, {
     rows: [
-      { ship: "A", container: "C1", from: "X", to: "Y", time: "2026-10-02 08:00", size: "20 呎" },
+      { ship: "A", container: "C1", from: "X", to: "Y", time: "2026-10-02 08:00", size: "20 呎", dispatchType: "CY", carrier: "夏輝" },
       { ship: "", container: "C2", from: "X", to: "Y", time: "壞掉", size: "99 呎" },
     ],
   });
@@ -198,8 +198,8 @@ test("batch import: valid rows are inserted, any invalid row rejects the whole b
 
   const ok = await call("POST", "/api/orders/import", ops, {
     rows: [
-      { ship: "A", container: "C1", from: "X", to: "Y", time: "2026-10-02 08:00", size: "20 呎" },
-      { ship: "B", container: "C2", from: "X", to: "Y", time: "2026-10-02T09:30", size: "40 呎" },
+      { ship: "A", container: "C1", from: "X", to: "Y", time: "2026-10-02 08:00", size: "20 呎", dispatchType: "cy", carrier: "夏輝" },
+      { ship: "B", container: "C2", from: "X", to: "Y", time: "2026-10-02T09:30", size: "40 呎", dispatchType: "船邊", carrier: "陽明" },
     ],
   });
   assert.strictEqual(ok.status, 201);
@@ -250,12 +250,48 @@ test("audit log records who changed what, visible to admin only", async () => {
   assert.strictEqual((await call("GET", "/api/audit-logs?entity=網站設定", admin)).data.every((l) => l.entity === "網站設定"), true);
 });
 
+test("dispatch type (CY / 船邊) and carrier are required, validated, editable and configurable", async () => {
+  const admin = await authFor("admin", "1234");
+  const ops = await authFor("ops1", "pass1234");
+  const order = { ship: "TYPE SHIP / 001", container: "TYP0001", from: "高雄港", to: "台中倉庫", time: "2026-10-04T09:00", size: "20 呎" };
+
+  const seeded = (await call("GET", "/api/orders", ops)).data.find((o) => o.id === "O20260925002");
+  assert.strictEqual(seeded.dispatchType, "船邊");
+  assert.strictEqual(seeded.carrier, "陽明");
+
+  assert.strictEqual((await call("POST", "/api/orders", ops, { ...order, carrier: "陽明" })).status, 400);
+  assert.strictEqual((await call("POST", "/api/orders", ops, { ...order, dispatchType: "碼頭", carrier: "陽明" })).status, 400);
+  assert.strictEqual((await call("POST", "/api/orders", ops, { ...order, dispatchType: "CY", carrier: "不存在的船公司" })).status, 400);
+
+  const created = await call("POST", "/api/orders", ops, { ...order, dispatchType: "船邊", carrier: "天鵝湖" });
+  assert.strictEqual(created.status, 201);
+  assert.strictEqual(created.data.dispatchType, "船邊");
+  assert.strictEqual(created.data.carrier, "天鵝湖");
+
+  const edited = await call("PATCH", `/api/orders/${created.data.id}`, ops, { dispatchType: "CY", carrier: "夏輝" });
+  assert.strictEqual(edited.data.dispatchType, "CY");
+  assert.strictEqual(edited.data.carrier, "夏輝");
+  assert.strictEqual((await call("PATCH", `/api/orders/${created.data.id}`, ops, { dispatchType: "亂寫" })).status, 400);
+
+  // 船公司可在後台新增,新增後才可使用
+  assert.strictEqual((await call("PUT", "/api/settings", ops, { carriers: ["X"] })).status, 403);
+  assert.strictEqual((await call("PUT", "/api/settings", admin, { carriers: [] })).status, 400);
+  const put = await call("PUT", "/api/settings", admin, { carriers: ["夏輝", "陽明", "天鵝湖", "新船公司"] });
+  assert.deepStrictEqual(put.data.carriers, ["夏輝", "陽明", "天鵝湖", "新船公司"]);
+  assert.strictEqual((await call("POST", "/api/orders", ops, { ...order, dispatchType: "CY", carrier: "新船公司" })).status, 201);
+
+  const bad = await call("POST", "/api/orders/import", ops, { rows: [{ ...order, dispatchType: "X", carrier: "Y" }] });
+  assert.strictEqual(bad.status, 400);
+  assert.ok(bad.data.details[0].problems.length >= 2);
+});
+
 test("csv export neutralises formula injection", async () => {
   const admin = await authFor("admin", "1234");
-  await call("POST", "/api/orders", admin, { ship: "=HYPERLINK(\"http://x\")", container: "CSV1", from: "A", to: "B", time: "2026-10-03T10:00", size: "20 呎" });
+  await call("POST", "/api/orders", admin, { ship: "=HYPERLINK(\"http://x\")", container: "CSV1", from: "A", to: "B", time: "2026-10-03T10:00", size: "20 呎", dispatchType: "船邊", carrier: "天鵝湖" });
   const r = await fetch(`${base}/api/orders/export/csv`, { headers: admin });
   const text = await r.text();
   assert.ok(text.includes(`"'=HYPERLINK`));
+  assert.ok(text.split("\n")[0].includes("船公司") && text.split("\n")[0].includes("調派類型"));
 });
 
 test("login rate limiting blocks repeated failed attempts", async () => {

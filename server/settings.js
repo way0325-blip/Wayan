@@ -1,6 +1,6 @@
 const { pool } = require("./db");
 
-const JSON_KEYS = ["locations", "container_sizes"];
+const JSON_KEYS = ["locations", "container_sizes", "carriers"];
 
 async function getSettings() {
   const { rows } = await pool.query("SELECT key, value FROM settings");
@@ -9,6 +9,7 @@ async function getSettings() {
     announcement: "",
     locations: [],
     container_sizes: ["20 呎", "40 呎", "45 呎"],
+    carriers: [],
   };
   for (const { key, value } of rows) {
     if (JSON_KEYS.includes(key)) {

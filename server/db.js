@@ -50,6 +50,8 @@ async function initSchema() {
     );
 
     ALTER TABLE users ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS dispatch_type TEXT NOT NULL DEFAULT 'CY';
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS carrier TEXT NOT NULL DEFAULT '';
 
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
@@ -75,6 +77,7 @@ async function seedSettings() {
     announcement: "",
     locations: JSON.stringify(["高雄港", "台中港", "基隆港", "台北港", "台中倉庫", "台南倉庫", "屏東物流中心"]),
     container_sizes: JSON.stringify(["20 呎", "40 呎", "45 呎"]),
+    carriers: JSON.stringify(["夏輝", "陽明", "天鵝湖"]),
   };
   for (const [key, value] of Object.entries(defaults)) {
     await pool.query(
@@ -127,11 +130,11 @@ async function seedIfEmpty() {
   if (orderRows[0].c === 0) {
     await pool.query(`
       INSERT INTO orders
-        (id, ship, container, from_location, to_location, time, size, status, driver_id, vehicle_id)
+        (id, ship, container, from_location, to_location, time, size, status, driver_id, vehicle_id, dispatch_type, carrier)
       VALUES
-        ('O20260925001', 'EVER ACE / 012W', 'EMCU1234567', '高雄港', '台中倉庫', '2026-09-25T09:00', '40 呎', '已派車', 'D001', 'V001'),
-        ('O20260925002', 'YANG MING / 088E', 'YMLU7654321', '高雄港', '台南倉庫', '2026-09-25T10:30', '20 呎', '待派車', NULL, NULL),
-        ('O20260925003', 'OOCL / 221N', 'OOLU9988776', '高雄港', '屏東物流中心', '2026-09-25T13:00', '40 呎', '已完成', 'D002', 'V002')
+        ('O20260925001', 'EVER ACE / 012W', 'EMCU1234567', '高雄港', '台中倉庫', '2026-09-25T09:00', '40 呎', '已派車', 'D001', 'V001', 'CY', '夏輝'),
+        ('O20260925002', 'YANG MING / 088E', 'YMLU7654321', '高雄港', '台南倉庫', '2026-09-25T10:30', '20 呎', '待派車', NULL, NULL, '船邊', '陽明'),
+        ('O20260925003', 'OOCL / 221N', 'OOLU9988776', '高雄港', '屏東物流中心', '2026-09-25T13:00', '40 呎', '已完成', 'D002', 'V002', 'CY', '天鵝湖')
       ON CONFLICT (id) DO NOTHING
     `);
   }
