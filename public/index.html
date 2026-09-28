@@ -195,9 +195,16 @@ textarea { width: 100%; min-height: 90px; padding: 12px 13px; color: var(--text)
 .type-head { padding: 6px 14px; font-size: 12px; letter-spacing: .5px; }
 .type-head.side { background: rgba(57,124,255,.18); color: #9ec0ff; }
 .type-head.cy { background: rgba(66,230,164,.14); color: var(--green); }
-.order-row { padding: 11px 14px; border-top: 1px solid var(--line); cursor: pointer; display: grid; gap: 4px; }
+.order-row { padding: 11px 14px; border-top: 1px solid var(--line); cursor: pointer; display: grid; grid-template-columns: 22px 1fr; gap: 10px; align-items: start; }
+input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0; accent-color: var(--cyan); cursor: pointer; flex: none; min-width: 0; }
+.ship-group > summary { display: flex; align-items: center; gap: 10px; }
+.pickbar { position: sticky; top: -20px; z-index: 2; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 -4px 12px; padding: 10px 8px; border-radius: 10px; background: #0d2038; border: 1px solid var(--line); }
+.pickbar label { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.pickbar .action:disabled { opacity: .4; cursor: not-allowed; }
+.order-row .rowbody { display: grid; gap: 4px; min-width: 0; }
 .order-row:hover { background: rgba(67,217,255,.06); }
 .order-row.selected { background: rgba(57,124,255,.25); box-shadow: inset 3px 0 0 var(--cyan); }
+.order-row.picked { background: rgba(66,230,164,.08); }
 .order-row .line1 { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
 .order-row .line2 { color: var(--muted); font-size: 13px; }
 .detail-grid { display: grid; grid-template-columns: 110px 1fr; gap: 10px 12px; margin: 16px 0; font-size: 14px; }
@@ -324,6 +331,12 @@ textarea { width: 100%; min-height: 90px; padding: 12px 13px; color: var(--text)
             <select id="orderStatus">
               <option value="">全部狀態</option><option>待派車</option><option>已派車</option><option>執行中</option><option>已完成</option>
             </select>
+          </div>
+          <div class="pickbar">
+            <label><input type="checkbox" id="pickAll" onchange="toggleAllPick(this.checked)"> 全選目前列表</label>
+            <span id="pickCount" class="muted">已選 0 筆</span>
+            <button class="action small" id="copyBtn" onclick="openCopyModal()" disabled>📋 複製明細</button>
+            <button class="action secondary small" onclick="clearPicks()">清除</button>
           </div>
           <div id="orderList"></div>
         </div>
@@ -465,6 +478,18 @@ textarea { width: 100%; min-height: 90px; padding: 12px 13px; color: var(--text)
       <div class="field"><label>下次保養日期</label><input id="vehicleMaintenance" type="date" required></div>
       <button id="vehicleSubmitBtn" class="primary">新增車輛</button>
     </form>
+  </div>
+</div>
+
+<div id="copyModal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head"><h3>複製調派明細</h3><button class="close" onclick="closeModal('copyModal')">×</button></div>
+    <div class="hint" style="margin:0 0 10px">下方文字可以直接修改。按「複製」後,到 LINE 或其他群組貼上即可。</div>
+    <textarea id="copyText" style="min-height:300px"></textarea>
+    <div class="btn-row" style="margin-top:12px;align-items:center">
+      <button class="action" onclick="copyText()">📋 複製全部文字</button>
+      <span id="copyMsg" class="ok-msg"></span>
+    </div>
   </div>
 </div>
 
@@ -653,16 +678,26 @@ function filteredOrders() {
   });
 }
 
+const picks = new Set();
+
 function orderRow(o) {
   const driver = drivers.find(d => d.id === o.driverId);
+  const picked = picks.has(o.id);
   return `
-  <div class="order-row ${o.id === selectedOrderId ? "selected" : ""}" onclick="selectOrder('${o.id}')">
-    <div class="line1"><b>${escapeHTML(o.container)}</b>${statusBadge(o.status)}</div>
-    <div class="line2">${escapeHTML(o.from)} → ${escapeHTML(o.to)}｜${formatDate(o.time)}｜${escapeHTML(o.size)}${driver ? "｜" + escapeHTML(driver.name) : ""}</div>
+  <div class="order-row ${o.id === selectedOrderId ? "selected" : ""} ${picked ? "picked" : ""}" onclick="selectOrder('${o.id}')">
+    <input type="checkbox" class="pick" ${picked ? "checked" : ""} onclick="event.stopPropagation()" onchange="togglePick('${o.id}', this.checked)" aria-label="勾選此訂單">
+    <div class="rowbody">
+      <div class="line1"><b>${escapeHTML(o.container)}</b>${statusBadge(o.status)}</div>
+      <div class="line2">${escapeHTML(o.from)} → ${escapeHTML(o.to)}｜${formatDate(o.time)}｜${escapeHTML(o.size)}${driver ? "｜" + escapeHTML(driver.name) : ""}</div>
+    </div>
   </div>`;
 }
 
 function renderOrders() {
+  for (const id of [...picks]) if (!orders.some(o => o.id === id)) picks.delete(id);
+
+  const pane = document.querySelector(".list-pane");
+  const scroll = pane.scrollTop;
   const list = filteredOrders();
   const box = document.getElementById("orderList");
 
@@ -680,14 +715,106 @@ function renderOrders() {
         return `<div class="type-head ${t === "CY" ? "cy" : "side"}">${TYPE_INFO[t]}・${its.length} 筆</div>${its.map(orderRow).join("")}`;
       }).join("");
       return `<details class="ship-group" data-ship="${escapeHTML(ship)}" ${collapsedShips.has(ship) ? "" : "open"}>
-        <summary>🚢 ${escapeHTML(ship)} <span class="muted">・${escapeHTML(carrierNames)}・${items.length} 筆</span></summary>${groups}</details>`;
+        <summary><input type="checkbox" class="pick ship-pick" aria-label="勾選整艘船" onclick="event.stopPropagation()" onchange="toggleShipPick(this)">
+          <span>🚢 ${escapeHTML(ship)} <span class="muted">・${escapeHTML(carrierNames)}・${items.length} 筆</span></span></summary>${groups}</details>`;
     }).join("");
 
-    box.querySelectorAll("details").forEach(d => d.addEventListener("toggle", () => {
-      d.open ? collapsedShips.delete(d.dataset.ship) : collapsedShips.add(d.dataset.ship);
-    }));
+    box.querySelectorAll("details").forEach(d => {
+      d.addEventListener("toggle", () => { d.open ? collapsedShips.delete(d.dataset.ship) : collapsedShips.add(d.dataset.ship); });
+      const ids = byShip.get(d.dataset.ship).map(o => o.id);
+      const n = ids.filter(id => picks.has(id)).length;
+      const cb = d.querySelector(".ship-pick");
+      cb.checked = n === ids.length;
+      cb.indeterminate = n > 0 && n < ids.length;
+    });
   }
+  pane.scrollTop = scroll;
+  updatePickBar(list);
   renderOrderDetail();
+}
+
+function updatePickBar(list = filteredOrders()) {
+  const n = picks.size;
+  document.getElementById("pickCount").textContent = `已選 ${n} 筆`;
+  document.getElementById("copyBtn").disabled = n === 0;
+  const all = document.getElementById("pickAll");
+  const inList = list.filter(o => picks.has(o.id)).length;
+  all.checked = list.length > 0 && inList === list.length;
+  all.indeterminate = inList > 0 && inList < list.length;
+}
+
+function togglePick(id, on) { on ? picks.add(id) : picks.delete(id); renderOrders(); }
+function toggleShipPick(cb) {
+  const ship = cb.closest("details").dataset.ship;
+  filteredOrders().filter(o => o.ship === ship).forEach(o => cb.checked ? picks.add(o.id) : picks.delete(o.id));
+  renderOrders();
+}
+function toggleAllPick(on) { filteredOrders().forEach(o => on ? picks.add(o.id) : picks.delete(o.id)); renderOrders(); }
+function clearPicks() { picks.clear(); renderOrders(); }
+
+const pad = n => String(n).padStart(2, "0");
+const shortTime = t => (t && t.length >= 16) ? `${t.slice(5, 7)}/${t.slice(8, 10)} ${t.slice(11, 16)}` : (t || "-");
+
+// 產生可直接貼到群組的純文字明細:依船分組,組內先船邊、後 CY,再依作業時間排序
+function buildDispatchText(list) {
+  const now = new Date();
+  const weekday = ["日", "一", "二", "三", "四", "五", "六"][now.getDay()];
+  const lines = [`【調派明細】${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())}(${weekday})　共 ${list.length} 筆`];
+
+  const byShip = new Map();
+  list.forEach(o => { if (!byShip.has(o.ship)) byShip.set(o.ship, []); byShip.get(o.ship).push(o); });
+
+  let n = 0;
+  for (const [ship, items] of byShip) {
+    const carrierNames = [...new Set(items.map(i => i.carrier).filter(Boolean))].join("、");
+    lines.push("", `🚢 ${ship}${carrierNames ? `(${carrierNames})` : ""}`);
+    for (const t of TYPE_ORDER) {
+      const its = items.filter(i => i.dispatchType === t).sort((a, b) => String(a.time).localeCompare(String(b.time)));
+      if (!its.length) continue;
+      lines.push(`▶ ${TYPE_INFO[t]}`);
+      for (const o of its) {
+        const driver = drivers.find(d => d.id === o.driverId);
+        const vehicle = vehicles.find(v => v.id === o.vehicleId);
+        n++;
+        lines.push(
+          `${n}. ${o.container}　${o.size}`,
+          `   ${o.from} → ${o.to}`,
+          `   ${shortTime(o.time)}`,
+          driver || vehicle
+            ? `   司機:${driver ? driver.name : "-"}　車號:${vehicle ? vehicle.plate : "-"}`
+            : `   尚未派車`
+        );
+      }
+    }
+  }
+  return lines.join("\n");
+}
+
+function copySingleOrder(id) {
+  const o = orders.find(x => x.id === id);
+  if (o) openCopyModal([o]);
+}
+
+function openCopyModal(list) {
+  const chosen = list || orders.filter(o => picks.has(o.id));
+  if (!chosen.length) return;
+  document.getElementById("copyText").value = buildDispatchText(chosen);
+  document.getElementById("copyMsg").textContent = "";
+  document.getElementById("copyModal").classList.remove("hidden");
+}
+
+async function copyText() {
+  const ta = document.getElementById("copyText");
+  const msg = document.getElementById("copyMsg");
+  try {
+    await navigator.clipboard.writeText(ta.value);
+    msg.textContent = "已複製 ✓ 可以到群組貼上了";
+  } catch (e) {
+    try {
+      ta.select();
+      msg.textContent = document.execCommand("copy") ? "已複製 ✓ 可以到群組貼上了" : "請長按文字,手動選「拷貝」";
+    } catch (e2) { msg.textContent = "請長按文字,手動選「拷貝」"; }
+  }
 }
 
 function selectOrder(id) {
@@ -711,6 +838,7 @@ function renderOrderDetail() {
     actions.push(`<button class="action" onclick="completeOrder('${o.id}')">完成</button>`);
     actions.push(`<button class="action secondary" onclick="openDispatchModal('${o.id}', 'reassign')">改派</button>`);
   }
+  actions.push(`<button class="action secondary" onclick="copySingleOrder('${o.id}')">📋 複製此筆</button>`);
   if (isAdmin()) {
     actions.push(`<button class="action secondary" onclick="openStatusModal('${o.id}')">改狀態</button>`);
     actions.push(`<button class="action danger" onclick="deleteOrder('${o.id}')">刪除</button>`);
