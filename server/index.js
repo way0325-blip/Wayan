@@ -28,6 +28,10 @@ app.use(
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", "'unsafe-inline'"],
+        // Helmet 的預設 CSP 會自動補上 script-src-attr 'none',擋掉所有 onclick="..." 這類
+        // inline 事件屬性(除非這裡明確覆寫)。前端大量使用 onclick/onchange,少了這行會導致
+        // 幾乎所有按鈕在真實瀏覽器裡點了沒反應(jsdom 等測試工具不會強制 CSP,所以測試測不出來)。
+        scriptSrcAttr: ["'unsafe-inline'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", "data:"],
       },
