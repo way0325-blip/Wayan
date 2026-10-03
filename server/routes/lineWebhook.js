@@ -10,6 +10,7 @@ const {
 const { findOrder, findActiveOrderByContainerFragment, completeOrder } = require("../orderService");
 
 const router = express.Router();
+const TIME_ZONE = "Asia/Taipei";
 
 const HELP_TEXT = [
   "【可用指令】",
@@ -19,6 +20,15 @@ const HELP_TEXT = [
   "・回報完成:直接回覆「N號完成」(N 是明細上的編號),或「完成 貨櫃編號」",
   "・說明 — 顯示這份說明",
 ].join("\n");
+
+function taipeiDateString(date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
 
 async function logLineEvent(sourceId, sourceType, text) {
   try {
@@ -38,24 +48,24 @@ async function listPendingText() {
   const { rows } = await pool.query("SELECT * FROM orders WHERE status = '待派車' ORDER BY time");
   if (!rows.length) return "目前沒有待派車的訂單。";
   return "【待派車】共 " + rows.length + " 筆\n" + rows
-    .map((o, i) => `${i + 1}. ${o.container}｜${o.from}→${o.to}｜${o.time.replace("T", " ")}`)
+    .map((o, i) => `${i + 1}. ${o.container}｜${o.from_location}→${o.to_location}｜${String(o.time).replace("T", " ")}`)
     .join("\n");
 }
 
 async function listCompletedTodayText() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = taipeiDateString();
   const { rows } = await pool.query(
     "SELECT * FROM orders WHERE status = '已完成' AND time LIKE $1 ORDER BY time",
     [today + "%"]
   );
   if (!rows.length) return "今天目前還沒有已完成的訂單。";
   return "【今日已完成】共 " + rows.length + " 筆\n" + rows
-    .map((o, i) => `${i + 1}. ${o.container}｜${o.from}→${o.to}`)
+    .map((o, i) => `${i + 1}. ${o.container}｜${o.from_location}→${o.to_location}`)
     .join("\n");
 }
 
 async function statsText() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = taipeiDateString();
   const { rows } = await pool.query("SELECT status, time FROM orders");
   const todays = rows.filter((o) => String(o.time).startsWith(today));
   const count = (list, st) => list.filter((o) => o.status === st).length;
@@ -69,9 +79,10 @@ async function statsText() {
 }
 
 async function handleComplete(order, actor, replyToken) {
-  const { order: updated, error, alreadyDone } = await completeOrder(order.id, actor);
-  if (error) return replyMessage(replyToken, "找不到這筆訂單。");
-  if (alreadyDone) return replyMessage(replyToken, `${updated.container} 先前已經是完成狀態囉。`);
+  const result = await completeOrder(order.id, actor);
+  if (result.error) return replyMessage(replyToken, result.error);
+  if (result.alreadyDone) return replyMessage(replyToken, `${result.order.container} 先前已經是完成狀態囉。`);
+  const updated = result.order;
   await replyMessage(
     replyToken,
     `✅ 已將 ${updated.container}(${updated.from_location}→${updated.to_location})標記為完成,並釋放司機與車輛。`
@@ -116,9 +127,7 @@ async function handleText(event) {
 }
 
 router.post("/webhook", express.raw({ type: "*/*", limit: "2mb" }), async (req, res) => {
-  // 一律先回 200,避免 LINE 因逾時重送;實際處理放在背景執行
   res.status(200).end();
-
   if (!isConfigured()) return;
 
   const signature = req.headers["x-line-signature"];
