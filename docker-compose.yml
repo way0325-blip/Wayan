@@ -29,6 +29,9 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-1234}
+      LINE_CHANNEL_SECRET: ${LINE_CHANNEL_SECRET:-}
+      LINE_CHANNEL_ACCESS_TOKEN: ${LINE_CHANNEL_ACCESS_TOKEN:-}
+      CRON_SECRET: ${CRON_SECRET:-change-this-to-a-long-random-secret}
     ports:
       - "3000:3000"
 

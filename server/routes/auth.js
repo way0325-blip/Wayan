@@ -3,6 +3,7 @@ const bcrypt = require("bcryptjs");
 const { pool } = require("../db");
 const { generateToken } = require("../auth");
 const { validateBody } = require("../validation");
+const { logAction } = require("../audit");
 
 const router = express.Router();
 
@@ -26,6 +27,11 @@ router.post(
         return res.status(401).json({ error: "帳號或密碼錯誤" });
       }
 
+      if (!user.active) {
+        return res.status(403).json({ error: "此帳號已被停用,請聯絡管理員" });
+      }
+
+      await logAction({ user }, "登入", "使用者", user.id, null);
       const token = generateToken(user);
       res.json({ token, username: user.username, role: user.role });
     } catch (err) {
