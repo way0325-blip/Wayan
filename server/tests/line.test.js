@@ -62,7 +62,18 @@ function sign(body) {
   return crypto.createHmac("SHA256", process.env.LINE_CHANNEL_SECRET).update(body).digest("base64");
 }
 
-async function sendWebhook(events) {
+async function waitFor(predicate, timeoutMs = 4000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (predicate()) return true;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  return false;
+}
+
+// webhook 立刻回 200,實際處理是背景非同步進行的;用輪詢取代固定 sleep,
+// 避免在較慢的 CI 環境下因為時間沒等夠而變成 flaky test。
+async function sendWebhook(events, opts = {}) {
   const body = JSON.stringify({ events });
   sentCalls.length = 0;
   const res = await fetch(`${base}/api/line/webhook`, {
@@ -70,8 +81,11 @@ async function sendWebhook(events) {
     headers: { "Content-Type": "application/json", "x-line-signature": sign(body) },
     body,
   });
-  // webhook 立刻回 200,背景處理是非同步的,稍等一下讓它跑完
-  await new Promise((r) => setTimeout(r, 300));
+  if (opts.expectNoCall) {
+    await new Promise((r) => setTimeout(r, 500));
+  } else {
+    await waitFor(() => sentCalls.length > 0);
+  }
   return res.status;
 }
 
@@ -85,13 +99,12 @@ test("signature verification: correct signature accepted, wrong signature reject
   });
   assert.strictEqual(ok.status, 200);
 
-  sentCalls.length = 0;
   await fetch(`${base}/api/line/webhook`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-line-signature": "bogus" },
     body: JSON.stringify({ events: [{ type: "message", message: { type: "text", text: "統計" }, replyToken: "rt", source: { type: "user", userId: "U1" } }] }),
   });
-  await new Promise((r) => setTimeout(r, 200));
+  await new Promise((r) => setTimeout(r, 500));
   assert.strictEqual(sentCalls.length, 0, "簽章錯誤時不應呼叫 LINE API");
 });
 
