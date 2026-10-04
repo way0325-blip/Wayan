@@ -16,6 +16,10 @@ const settingsRoutes = require("./routes/settings");
 const auditLogRoutes = require("./routes/auditLogs");
 const lineWebhookRoutes = require("./routes/lineWebhook");
 const lineCronRoutes = require("./routes/lineCron");
+const alertRoutes = require("./routes/alerts");
+const vehicleMaintenanceItemRoutes = require("./routes/vehicleMaintenanceItems");
+const dispatchStaffRoutes = require("./routes/dispatchStaff");
+const attendanceRoutes = require("./routes/attendance");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -85,6 +89,10 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
 app.use("/api/line/cron", lineCronRoutes);
+app.use("/api/alerts", alertRoutes);
+app.use("/api/vehicle-maintenance-items", vehicleMaintenanceItemRoutes);
+app.use("/api/dispatch-staff", dispatchStaffRoutes);
+app.use("/api/attendance", attendanceRoutes);
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 

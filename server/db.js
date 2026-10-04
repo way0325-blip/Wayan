@@ -52,6 +52,35 @@ async function initSchema() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS dispatch_type TEXT NOT NULL DEFAULT 'CY';
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS carrier TEXT NOT NULL DEFAULT '';
+    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS inspection_date TEXT;
+
+    CREATE TABLE IF NOT EXISTS vehicle_maintenance_items (
+      id SERIAL PRIMARY KEY,
+      vehicle_id TEXT NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+      item_name TEXT NOT NULL,
+      due_date TEXT NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS dispatch_staff (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      phone TEXT NOT NULL DEFAULT '',
+      active BOOLEAN NOT NULL DEFAULT TRUE
+    );
+
+    CREATE TABLE IF NOT EXISTS attendance_records (
+      id SERIAL PRIMARY KEY,
+      staff_type TEXT NOT NULL CHECK (staff_type IN ('driver', 'dispatcher')),
+      staff_id TEXT NOT NULL,
+      date TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('出勤', '休假', '曠職')),
+      note TEXT NOT NULL DEFAULT '',
+      updated_by TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (staff_type, staff_id, date)
+    );
 
     CREATE TABLE IF NOT EXISTS line_daily_index (
       source_id TEXT NOT NULL,
