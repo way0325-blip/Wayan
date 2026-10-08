@@ -70,6 +70,51 @@ async function initSchema() {
       active BOOLEAN NOT NULL DEFAULT TRUE
     );
 
+    -- 蝦皮店到店:車隊需求管理(與港口 orders 完全獨立)
+    CREATE TABLE IF NOT EXISTS shopee_routes (
+      id TEXT PRIMARY KEY,
+      service_date TEXT NOT NULL,
+      origin TEXT NOT NULL,
+      destination TEXT NOT NULL,
+      vehicle_type TEXT NOT NULL,
+      required_trucks INTEGER NOT NULL CHECK (required_trucks >= 1),
+      note TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS partner_fleets (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      contact_name TEXT NOT NULL DEFAULT '',
+      phone TEXT NOT NULL DEFAULT '',
+      daily_capacity INTEGER NOT NULL DEFAULT 0 CHECK (daily_capacity >= 0),
+      status TEXT NOT NULL DEFAULT '啟用' CHECK (status IN ('啟用', '停用')),
+      note TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS fleet_routes (
+      id SERIAL PRIMARY KEY,
+      fleet_id TEXT NOT NULL REFERENCES partner_fleets(id) ON DELETE CASCADE,
+      origin TEXT NOT NULL,
+      destination TEXT NOT NULL,
+      vehicle_type TEXT NOT NULL,
+      max_trucks INTEGER NOT NULL DEFAULT 1 CHECK (max_trucks >= 1),
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      UNIQUE (fleet_id, origin, destination, vehicle_type)
+    );
+
+    CREATE TABLE IF NOT EXISTS shopee_assignments (
+      id SERIAL PRIMARY KEY,
+      route_id TEXT NOT NULL REFERENCES shopee_routes(id) ON DELETE CASCADE,
+      fleet_id TEXT NOT NULL REFERENCES partner_fleets(id),
+      requested_trucks INTEGER NOT NULL CHECK (requested_trucks >= 1),
+      confirmed_trucks INTEGER NOT NULL DEFAULT 0 CHECK (confirmed_trucks >= 0),
+      status TEXT NOT NULL DEFAULT '待回覆' CHECK (status IN ('待回覆', '已確認', '已拒絕')),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (route_id, fleet_id)
+    );
+
     CREATE TABLE IF NOT EXISTS attendance_records (
       id SERIAL PRIMARY KEY,
       staff_type TEXT NOT NULL CHECK (staff_type IN ('driver', 'dispatcher')),
@@ -116,6 +161,7 @@ async function seedSettings() {
     container_sizes: JSON.stringify(["20 呎", "40 呎", "45 呎"]),
     carriers: JSON.stringify(["夏輝", "陽明", "天鵝湖"]),
     line_group_ids: JSON.stringify([]),
+    shopee_vehicle_types: JSON.stringify(["3.5T", "11T", "17T"]),
   };
   for (const [key, value] of Object.entries(defaults)) {
     await pool.query(

@@ -215,6 +215,9 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
 .type-tag.cy { background: rgba(66,230,164,.16); color: var(--green); }
 @media (max-width: 900px) { .split { grid-template-columns: 1fr; } .list-pane { max-height: none; } .detail-pane { position: static; } }
 .ok-msg { color: var(--green); font-size: 13px; margin-left: 10px; }
+.fleet-row { padding: 12px 14px; margin-bottom: 10px; border: 1px solid var(--line); border-radius: 12px; background: rgba(7,20,38,.5); display: grid; gap: 8px; }
+.fleet-row input[type="number"] { width: 90px; padding: 8px 10px; }
+.sum-line { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 6px 0 14px; font-size: 14px; }
 .alert.warn { background: rgba(255,209,102,.12); color: var(--yellow); border-color: rgba(255,209,102,.35); }
 
 @media (max-width: 900px) {
@@ -269,6 +272,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
 
     <button class="nav-btn active" data-page="dashboard">📊 今日儀表板</button>
     <button class="nav-btn" data-page="orders">📦 訂單與車趟</button>
+    <button class="nav-btn" data-page="shopee">🟢 蝦皮車隊需求</button>
     <button class="nav-btn" data-page="drivers">👨‍✈️ 司機管理</button>
     <button class="nav-btn" data-page="vehicles">🚚 車輛管理</button>
     <button class="nav-btn" data-page="schedule">📅 班表</button>
@@ -394,6 +398,44 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
       </div>
     </section>
 
+    <section id="shopee" class="page">
+      <div class="tabs">
+        <button class="tab active" data-shopee="demand">需求管理</button>
+        <button class="tab" data-shopee="fleets">夥伴車隊</button>
+      </div>
+
+      <div id="shopeeDemandPane">
+        <div class="cards">
+          <div class="card"><div class="card-title">需求路線</div><div id="shopeeRouteCount" class="card-value cyan">0</div></div>
+          <div class="card"><div class="card-title">需求車數</div><div id="shopeeRequired" class="card-value">0</div></div>
+          <div class="card"><div class="card-title">已確認車數</div><div id="shopeeConfirmed" class="card-value green">0</div></div>
+          <div class="card"><div class="card-title">尚缺車數</div><div id="shopeeShortage" class="card-value red">0</div></div>
+        </div>
+        <div class="panel">
+          <div class="toolbar">
+            <button class="action secondary small" onclick="shiftShopeeDate(-1)">◀</button>
+            <input type="date" id="shopeeDate" onchange="loadShopeeRoutes()" style="width:auto">
+            <button class="action secondary small" onclick="shiftShopeeDate(1)">▶</button>
+            <label class="hint" style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="shopeeAllDates" onchange="loadShopeeRoutes()"> 顯示全部日期</label>
+            <button class="action" onclick="openShopeeRouteModal()">＋ 新增需求</button>
+            <button class="action secondary" onclick="openShopeeImportModal()">📥 匯入 CSV</button>
+            <button class="action secondary" onclick="loadShopeeRoutes()">🔄 重新整理</button>
+          </div>
+          <div id="shopeeRouteTable" class="table-wrap"></div>
+        </div>
+      </div>
+
+      <div id="shopeeFleetsPane" class="hidden">
+        <div class="panel">
+          <div class="toolbar">
+            <button class="action" onclick="openShopeeFleetModal()">＋ 新增車隊</button>
+            <span class="hint" style="align-self:center">每個車隊要先設定「可承接的路線 + 車型」,系統才會在分派時把它列為候選。</span>
+          </div>
+          <div id="shopeeFleetTable" class="table-wrap"></div>
+        </div>
+      </div>
+    </section>
+
     <section id="users" class="page">
       <div class="tabs">
         <button class="tab active" data-sub="subUsers">使用者</button>
@@ -417,6 +459,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
           <textarea id="setLineGroups" placeholder="把 LINE bot 加入群組後,群組會自動回覆一組 ID,貼在這裡"></textarea>
           <div class="hint">推送明細、每日/每週報表都會發到這裡設定的所有群組。取得方式:把 bot 加入群組,bot 會自動回覆這個群組的 ID。</div>
         </div>
+        <div class="field"><label>蝦皮車型(一行一個,例如 3.5T、11T、17T)</label><textarea id="setShopeeTypes"></textarea><div class="hint">蝦皮需求與車隊可承接路線的車型都以這份清單為準;已建立的資料不受影響。</div></div>
         <div class="field"><label>貨櫃尺寸(一行一個)</label><textarea id="setSizes"></textarea><div class="hint">已存在的訂單不受影響;移除的尺寸只是不能再用於新訂單。</div></div>
         <button class="action" onclick="saveSettings()">儲存設定</button><span id="settingsMsg" class="ok-msg"></span>
       </div>
@@ -537,9 +580,94 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
   </div>
 </div>
 
+<div id="shopeeRouteModal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head"><h3 id="shopeeRouteModalTitle">新增蝦皮需求</h3><button class="close" onclick="closeModal('shopeeRouteModal')">×</button></div>
+    <div id="shopeeRouteError" class="alert hidden"></div>
+    <form id="shopeeRouteForm">
+      <input id="shopeeRouteEditId" type="hidden">
+      <div class="form-grid">
+        <div class="field"><label>日期</label><input id="shopeeRouteDate" type="date" required></div>
+        <div class="field"><label>車型</label><select id="shopeeRouteType" required></select></div>
+        <div class="field"><label>起點</label><input id="shopeeRouteOrigin" list="locationList" required placeholder="例如:台北"></div>
+        <div class="field"><label>終點</label><input id="shopeeRouteDest" list="locationList" required placeholder="例如:桃園"></div>
+        <div class="field"><label>需求車數</label><input id="shopeeRouteTrucks" type="number" min="1" max="200" step="1" required></div>
+        <div class="field"><label>備註</label><input id="shopeeRouteNote" maxlength="200"></div>
+      </div>
+      <div id="shopeeRouteLockHint" class="hint hidden" style="margin-bottom:10px">這筆需求已有車隊分派,日期、路線、車型已鎖定;要改請先到「車隊分派」移除分派。</div>
+      <button id="shopeeRouteSubmit" class="primary">建立需求</button>
+    </form>
+  </div>
+</div>
+
+<div id="shopeeImportModal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head"><h3>匯入蝦皮需求(CSV)</h3><button class="close" onclick="closeModal('shopeeImportModal')">×</button></div>
+    <p class="hint" style="margin-top:0">欄位:日期、起點、終點、車型、車數、備註(備註可空白)。Excel 請另存成 CSV(UTF-8)。日期可寫 2026/10/9 或 2026-10-09,車型必須是後台設定的車型。只要有一列錯誤,整批都不會寫入。</p>
+    <div class="toolbar">
+      <button class="action secondary" onclick="downloadShopeeTemplate()">下載範本</button>
+      <input id="shopeeImportFile" type="file" accept=".csv,text/csv">
+      <button class="action" onclick="importShopeeRoutes()">開始匯入</button>
+    </div>
+    <div id="shopeeImportResult"></div>
+  </div>
+</div>
+
+<div id="shopeeAssignModal" class="modal hidden">
+  <div class="modal-box" style="width:min(760px,100%)">
+    <div class="modal-head"><h3 id="shopeeAssignTitle">車隊分派</h3><button class="close" onclick="closeModal('shopeeAssignModal')">×</button></div>
+    <div id="shopeeAssignSummary" class="sum-line"></div>
+    <div id="shopeeAssignMsg"></div>
+    <div id="shopeeAssignBody"></div>
+    <div class="btn-row" style="margin-top:14px">
+      <button class="action" onclick="saveShopeeAssignments()">💾 發送需求</button>
+      <button class="action secondary" onclick="autoAssignShopee()">⚡ 自動分派缺口</button>
+      <button class="action secondary" onclick="copyShopeeNotice()">📋 複製通知文字</button>
+    </div>
+    <div class="hint">「發送需求」只是記錄你向車隊要了幾車並產生通知文字(請自行傳給車隊);車隊回覆後,在各車隊那一列登記承接車數,缺口才會減少。</div>
+  </div>
+</div>
+
+<div id="shopeeFleetModal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head"><h3 id="shopeeFleetModalTitle">新增夥伴車隊</h3><button class="close" onclick="closeModal('shopeeFleetModal')">×</button></div>
+    <div id="shopeeFleetError" class="alert hidden"></div>
+    <form id="shopeeFleetForm">
+      <input id="shopeeFleetEditId" type="hidden">
+      <div class="form-grid">
+        <div class="field"><label>車隊名稱</label><input id="shopeeFleetName" required maxlength="50"></div>
+        <div class="field"><label>聯絡人</label><input id="shopeeFleetContact" maxlength="50"></div>
+        <div class="field"><label>電話</label><input id="shopeeFleetPhone" maxlength="30"></div>
+        <div class="field"><label>單日車數上限(0 = 不限)</label><input id="shopeeFleetCapacity" type="number" min="0" max="1000" step="1" value="0"></div>
+        <div class="field full"><label>備註</label><input id="shopeeFleetNote" maxlength="200"></div>
+        <div class="field" id="shopeeFleetStatusField"><label>狀態</label><select id="shopeeFleetStatus"><option>啟用</option><option>停用</option></select></div>
+      </div>
+      <button id="shopeeFleetSubmit" class="primary">新增車隊</button>
+    </form>
+  </div>
+</div>
+
+<div id="shopeeFleetRoutesModal" class="modal hidden">
+  <div class="modal-box" style="width:min(760px,100%)">
+    <div class="modal-head"><h3 id="shopeeFleetRoutesTitle">可承接路線</h3><button class="close" onclick="closeModal('shopeeFleetRoutesModal')">×</button></div>
+    <div id="shopeeFleetRoutesError" class="alert hidden"></div>
+    <div id="shopeeFleetRoutesList" class="table-wrap"></div>
+    <h4 style="margin:18px 0 10px">新增可承接路線</h4>
+    <form id="shopeeFleetRouteForm">
+      <div class="form-grid">
+        <div class="field"><label>起點</label><input id="sfrOrigin" list="locationList" required></div>
+        <div class="field"><label>終點</label><input id="sfrDest" list="locationList" required></div>
+        <div class="field"><label>車型</label><select id="sfrType" required></select></div>
+        <div class="field"><label>這條路線最多可承接幾車</label><input id="sfrMax" type="number" min="1" max="200" step="1" required></div>
+      </div>
+      <button class="primary">新增</button>
+    </form>
+  </div>
+</div>
+
 <div id="copyModal" class="modal hidden">
   <div class="modal-box">
-    <div class="modal-head"><h3>複製調派明細</h3><button class="close" onclick="closeModal('copyModal')">×</button></div>
+    <div class="modal-head"><h3 id="copyModalTitle">複製調派明細</h3><button class="close" onclick="closeModal('copyModal')">×</button></div>
     <div class="hint" style="margin:0 0 10px">下方文字可以直接修改。按「複製」後,到 LINE 或其他群組貼上即可。</div>
     <textarea id="copyText" style="min-height:300px"></textarea>
     <div class="btn-row" style="margin-top:12px;align-items:center">
@@ -606,7 +734,7 @@ let vehicles = [];
 let orders = [];
 let users = [];
 let alertsList = [];
-let settings = { systemName: "港區星際運輸調度中心", announcement: "", locations: [], containerSizes: ["20 呎", "40 呎", "45 呎"], carriers: [], lineGroupIds: [] };
+let settings = { systemName: "港區星際運輸調度中心", announcement: "", locations: [], containerSizes: ["20 呎", "40 呎", "45 呎"], carriers: [], lineGroupIds: [], shopeeVehicleTypes: ["3.5T", "11T", "17T"] };
 
 function getToken() { return localStorage.getItem("token"); }
 function getRole() { return localStorage.getItem("role"); }
@@ -873,6 +1001,7 @@ function copySingleOrder(id) {
 function openCopyModal(list) {
   const chosen = list || orders.filter(o => picks.has(o.id));
   if (!chosen.length) return;
+  document.getElementById("copyModalTitle").textContent = "複製調派明細";
   document.getElementById("copyText").value = buildDispatchText(chosen);
   document.getElementById("copyMsg").textContent = "";
   document.getElementById("copyModal").classList.remove("hidden");
@@ -1055,6 +1184,7 @@ function applySettings() {
     document.getElementById("setSizes").value = settings.containerSizes.join("\n");
     document.getElementById("setCarriers").value = settings.carriers.join("\n");
     document.getElementById("setLineGroups").value = settings.lineGroupIds.join("\n");
+    document.getElementById("setShopeeTypes").value = settings.shopeeVehicleTypes.join("\n");
   }
 }
 
@@ -1084,6 +1214,7 @@ async function saveSettings() {
         containerSizes: lines("setSizes"),
         carriers: lines("setCarriers"),
         lineGroupIds: lines("setLineGroups"),
+        shopeeVehicleTypes: lines("setShopeeTypes"),
       }),
     });
     await loadAll();
@@ -1430,6 +1561,424 @@ function openDispatchStaffModal() {
   document.getElementById("dispatchStaffModal").classList.remove("hidden");
 }
 
+// ---- 蝦皮店到店:車隊需求 ----
+let shopeeRoutesData = [];
+let shopeeFleetsData = [];
+let shopeeAssignRouteId = null;
+let shopeeAssignCache = null;
+let shopeeFleetRoutesFleetId = null;
+
+function localToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function fillShopeeTypeSelect(selectId, keep) {
+  const sel = document.getElementById(selectId);
+  const types = [...settings.shopeeVehicleTypes];
+  if (keep && !types.includes(keep)) types.push(keep);
+  sel.innerHTML = types.map(t => `<option>${escapeHTML(t)}</option>`).join("");
+  if (keep) sel.value = keep;
+}
+
+function shopeeStatusBadge(status) {
+  const color = status === "已補滿" || status === "已確認" ? "green" : status === "待車隊回覆" || status === "待回覆" ? "yellow" : "red";
+  return `<span class="badge ${color}">${escapeHTML(status)}</span>`;
+}
+
+async function loadShopee() {
+  const dateEl = document.getElementById("shopeeDate");
+  if (!dateEl.value) dateEl.value = localToday();
+  await Promise.all([loadShopeeRoutes(), loadShopeeFleets()]);
+}
+
+function shiftShopeeDate(delta) {
+  const el = document.getElementById("shopeeDate");
+  const d = new Date((el.value || localToday()) + "T00:00:00");
+  d.setDate(d.getDate() + delta);
+  el.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  document.getElementById("shopeeAllDates").checked = false;
+  loadShopeeRoutes();
+}
+
+async function loadShopeeRoutes() {
+  const all = document.getElementById("shopeeAllDates").checked;
+  const date = document.getElementById("shopeeDate").value;
+  const query = !all && date ? `?date=${encodeURIComponent(date)}` : "";
+  try {
+    shopeeRoutesData = await api("/api/shopee/routes" + query);
+    renderShopeeRoutes();
+  } catch (err) {
+    document.getElementById("shopeeRouteTable").innerHTML = `<div class="alert">${escapeHTML(err.message)}</div>`;
+  }
+}
+
+function renderShopeeRoutes() {
+  const list = shopeeRoutesData;
+  const required = list.reduce((n, r) => n + r.requiredTrucks, 0);
+  const confirmed = list.reduce((n, r) => n + Math.min(r.confirmedTrucks, r.requiredTrucks), 0);
+  document.getElementById("shopeeRouteCount").textContent = list.length;
+  document.getElementById("shopeeRequired").textContent = required;
+  document.getElementById("shopeeConfirmed").textContent = confirmed;
+  document.getElementById("shopeeShortage").textContent = list.reduce((n, r) => n + r.shortage, 0);
+
+  const showDate = document.getElementById("shopeeAllDates").checked;
+  const box = document.getElementById("shopeeRouteTable");
+  if (!list.length) { box.innerHTML = `<div class="empty">這個日期還沒有蝦皮需求,可以按「新增需求」或「匯入 CSV」</div>`; return; }
+
+  box.innerHTML = `
+  <table>
+    <thead><tr>${showDate ? "<th>日期</th>" : ""}<th>路線</th><th>車型</th><th>需求</th><th>已確認</th><th>待回覆</th><th>缺口</th><th>狀態</th><th>操作</th></tr></thead>
+    <tbody>
+      ${list.map(r => `
+      <tr>
+        ${showDate ? `<td>${r.serviceDate}</td>` : ""}
+        <td><b>${escapeHTML(r.origin)} → ${escapeHTML(r.destination)}</b>${r.note ? `<div class="muted">${escapeHTML(r.note)}</div>` : ""}</td>
+        <td>${escapeHTML(r.vehicleType)}</td>
+        <td>${r.requiredTrucks}</td>
+        <td>${r.confirmedTrucks}</td>
+        <td>${r.pendingTrucks}</td>
+        <td>${r.shortage > 0 ? `<span class="red"><b>缺 ${r.shortage} 車</b></span>` : `<span class="green">✓ 0</span>`}</td>
+        <td>${shopeeStatusBadge(r.status)}</td>
+        <td><div class="btn-row">
+          <button class="action small" onclick="openShopeeAssignModal('${r.id}')">車隊分派</button>
+          <button class="action secondary small" onclick="openShopeeRouteModal('${r.id}')">編輯</button>
+          ${isAdmin() ? `<button class="action danger small" onclick="deleteShopeeRoute('${r.id}')">刪除</button>` : ""}
+        </div></td>
+      </tr>`).join("")}
+    </tbody>
+  </table>`;
+}
+
+function openShopeeRouteModal(routeId) {
+  const r = routeId ? shopeeRoutesData.find(x => x.id === routeId) : null;
+  document.getElementById("shopeeRouteError").classList.add("hidden");
+  document.getElementById("shopeeRouteEditId").value = r ? r.id : "";
+  document.getElementById("shopeeRouteModalTitle").textContent = r ? "編輯蝦皮需求" : "新增蝦皮需求";
+  document.getElementById("shopeeRouteSubmit").textContent = r ? "儲存變更" : "建立需求";
+  fillShopeeTypeSelect("shopeeRouteType", r?.vehicleType);
+  document.getElementById("shopeeRouteDate").value = r?.serviceDate || document.getElementById("shopeeDate").value || localToday();
+  document.getElementById("shopeeRouteOrigin").value = r?.origin || "";
+  document.getElementById("shopeeRouteDest").value = r?.destination || "";
+  document.getElementById("shopeeRouteTrucks").value = r?.requiredTrucks || "";
+  document.getElementById("shopeeRouteNote").value = r?.note || "";
+  // 已有車隊分派(已確認或待回覆)時,日期/路線/車型後端會鎖定,先在畫面上提示
+  const locked = !!r && (r.confirmedTrucks > 0 || r.pendingTrucks > 0);
+  document.getElementById("shopeeRouteLockHint").classList.toggle("hidden", !locked);
+  document.getElementById("shopeeRouteModal").classList.remove("hidden");
+}
+
+async function deleteShopeeRoute(id) {
+  if (!confirm("確定要刪除這筆蝦皮需求嗎?車隊分派紀錄會一併刪除。")) return;
+  try { await api(`/api/shopee/routes/${id}`, { method: "DELETE" }); await loadShopeeRoutes(); }
+  catch (err) { alert(err.message); }
+}
+
+// ----- CSV 匯入 -----
+function openShopeeImportModal() {
+  document.getElementById("shopeeImportResult").innerHTML = "";
+  document.getElementById("shopeeImportFile").value = "";
+  document.getElementById("shopeeImportModal").classList.remove("hidden");
+}
+
+function downloadShopeeTemplate() {
+  const csv = "\ufeff日期,起點,終點,車型,車數,備註\n" + `${localToday()},台北,桃園,3.5T,2,\n` + `${localToday()},桃園,新竹,11T,1,急件\n`;
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  link.download = "蝦皮需求匯入範本.csv";
+  link.click();
+}
+
+function normalizeCsvDate(v) {
+  const m = String(v || "").trim().match(/^(\d{4})[\/.-](\d{1,2})[\/.-](\d{1,2})$/);
+  return m ? `${m[1]}-${pad(Number(m[2]))}-${pad(Number(m[3]))}` : String(v || "").trim();
+}
+
+async function importShopeeRoutes() {
+  const out = document.getElementById("shopeeImportResult");
+  const file = document.getElementById("shopeeImportFile").files[0];
+  if (!file) { alert("請先選擇 CSV 檔案"); return; }
+
+  const table = parseCSV(await file.text());
+  if (table.length < 2) { out.innerHTML = `<div class="alert">檔案沒有資料列</div>`; return; }
+
+  const map = { "日期": "serviceDate", "服務日期": "serviceDate", "起點": "origin", "終點": "destination",
+                "車型": "vehicleType", "車數": "requiredTrucks", "需求車數": "requiredTrucks", "需求": "requiredTrucks", "備註": "note" };
+  const cols = table[0].map(h => map[h.trim()]);
+  const missing = ["serviceDate", "origin", "destination", "vehicleType", "requiredTrucks"].filter(k => !cols.includes(k));
+  if (missing.length) { out.innerHTML = `<div class="alert">缺少欄位,請確認表頭與範本一致(日期、起點、終點、車型、車數)</div>`; return; }
+
+  const rows = table.slice(1).map(r => {
+    const o = {};
+    cols.forEach((k, i) => { if (k) o[k] = (r[i] ?? "").trim(); });
+    o.serviceDate = normalizeCsvDate(o.serviceDate);
+    return o;
+  });
+
+  try {
+    const res = await fetch("/api/shopee/routes/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + getToken() },
+      body: JSON.stringify({ rows }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      out.innerHTML = `<div class="notice" style="color:var(--green);border-color:rgba(66,230,164,.4);background:rgba(66,230,164,.1)">匯入成功,共 ${data.imported} 筆</div>`;
+      document.getElementById("shopeeImportFile").value = "";
+      await loadShopeeRoutes();
+    } else {
+      const detail = Array.isArray(data.details)
+        ? data.details.slice(0, 20).map(d => `<div>第 ${d.row} 列:${escapeHTML(d.problems.join("、"))}</div>`).join("")
+        : "";
+      out.innerHTML = `<div class="alert"><b>${escapeHTML(data.error || "匯入失敗")}</b>${detail}</div>`;
+    }
+  } catch (err) {
+    out.innerHTML = `<div class="alert">${escapeHTML(err.message)}</div>`;
+  }
+}
+
+// ----- 車隊分派 -----
+async function openShopeeAssignModal(routeId) {
+  shopeeAssignRouteId = routeId;
+  document.getElementById("shopeeAssignMsg").innerHTML = "";
+  document.getElementById("shopeeAssignModal").classList.remove("hidden");
+  await refreshShopeeAssign();
+}
+
+async function refreshShopeeAssign() {
+  const body = document.getElementById("shopeeAssignBody");
+  try {
+    shopeeAssignCache = await api(`/api/shopee/routes/${shopeeAssignRouteId}/candidates`);
+  } catch (err) {
+    body.innerHTML = `<div class="alert">${escapeHTML(err.message)}</div>`;
+    return;
+  }
+  const { route, candidates } = shopeeAssignCache;
+  document.getElementById("shopeeAssignTitle").textContent = `${route.serviceDate}｜${route.origin} → ${route.destination}｜${route.vehicleType}`;
+  document.getElementById("shopeeAssignSummary").innerHTML =
+    `<span>需求 <b>${route.requiredTrucks}</b> 車</span><span>已確認 <b class="green">${route.confirmedTrucks}</b></span>` +
+    `<span>待回覆 <b class="yellow">${route.pendingTrucks}</b></span><span>缺口 <b class="${route.shortage ? "red" : "green"}">${route.shortage}</b></span>` +
+    shopeeStatusBadge(route.status);
+
+  if (!candidates.length) {
+    body.innerHTML = `<div class="empty">沒有符合「${escapeHTML(route.origin)} → ${escapeHTML(route.destination)}、${escapeHTML(route.vehicleType)}」的車隊。<br>請到「夥伴車隊」分頁,替車隊設定可承接的路線與車型。</div>`;
+    return;
+  }
+
+  body.innerHTML = candidates.map(c => {
+    let reply = "";
+    if (c.assignmentStatus === "待回覆") {
+      reply = `${shopeeStatusBadge("待回覆")} 承接 <input type="number" class="conf-input" data-asg="${c.assignmentId}" min="0" max="${c.requestedTrucks}" step="1" value="${c.requestedTrucks}"> 車
+        <button class="action small" onclick="replyShopeeAssignment(${c.assignmentId})">登記回覆</button>
+        <button class="action secondary small" onclick="replyShopeeAssignment(${c.assignmentId}, 0)">拒絕</button>`;
+    } else if (c.assignmentStatus === "已確認") {
+      reply = `${shopeeStatusBadge("已確認")} <b>${c.confirmedTrucks}/${c.requestedTrucks}</b> 車
+        <button class="action secondary small" onclick="resetShopeeAssignment(${c.assignmentId})">重設回覆</button>`;
+    } else if (c.assignmentStatus === "已拒絕") {
+      reply = `<span class="badge red">已拒絕</span> <button class="action secondary small" onclick="resetShopeeAssignment(${c.assignmentId})">重設回覆</button>`;
+    }
+    const remove = c.assignmentId ? `<button class="action danger small" onclick="removeShopeeAssignment(${c.assignmentId})">移除分派</button>` : "";
+    const capText = c.dailyCapacity > 0
+      ? `單日上限 ${c.dailyCapacity} 車,其他路線已用 ${c.usedOnOtherRoutes},這條最多可再要 ${c.availableTrucks}`
+      : "單日不限車數";
+    return `
+    <div class="fleet-row">
+      <div><b>${escapeHTML(c.name)}</b> <span class="muted">${escapeHTML(c.contactName || "")} ${escapeHTML(c.phone || "")}</span></div>
+      <div class="muted">這條路線最多 ${c.maxTrucks} 車・${capText}</div>
+      <div class="btn-row" style="align-items:center">
+        要求 <input type="number" class="req-input" data-fleet="${c.fleetId}" min="1" max="${c.maxTrucks}" step="1" value="${c.requestedTrucks || ""}" placeholder="0"> 車
+        ${reply} ${remove}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+async function afterShopeeAssignChange() {
+  await Promise.all([refreshShopeeAssign(), loadShopeeRoutes()]);
+}
+
+async function saveShopeeAssignments() {
+  const assignments = [...document.querySelectorAll("#shopeeAssignBody .req-input")]
+    .filter(i => i.value !== "")
+    .map(i => ({ fleetId: i.dataset.fleet, requestedTrucks: Number(i.value) }));
+  if (!assignments.length) { alert("請至少在一個車隊填入要求車數"); return; }
+  try {
+    await api(`/api/shopee/routes/${shopeeAssignRouteId}/assignments`, { method: "PUT", body: JSON.stringify({ assignments }) });
+    document.getElementById("shopeeAssignMsg").innerHTML = `<div class="notice" style="color:var(--green);border-color:rgba(66,230,164,.4);background:rgba(66,230,164,.1)">已記錄。接著可按「複製通知文字」傳給車隊。</div>`;
+    await afterShopeeAssignChange();
+  } catch (err) {
+    alert("分派失敗:\n\n・" + err.message);
+  }
+}
+
+async function autoAssignShopee() {
+  try {
+    const r = await api(`/api/shopee/routes/${shopeeAssignRouteId}/auto-assign`, { method: "POST" });
+    const created = r.created.map(c => `${escapeHTML(c.name)} ${c.requestedTrucks} 車`).join("、");
+    const msg = r.message
+      ? escapeHTML(r.message)
+      : `已自動分派:${created || "沒有可分派的車隊"}。` + (r.uncovered > 0 ? `<br>⚠ 仍有 ${r.uncovered} 車沒有車隊可以承接(候選車隊不足或單日額度已滿)。` : "");
+    document.getElementById("shopeeAssignMsg").innerHTML = `<div class="notice">${msg}<br>結果是「待回覆」,車隊回覆後請登記承接車數。</div>`;
+    await afterShopeeAssignChange();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function replyShopeeAssignment(id, forced) {
+  let n = forced;
+  if (n === undefined) {
+    const input = document.querySelector(`.conf-input[data-asg="${id}"]`);
+    n = input ? input.value : "";
+  }
+  if (n === "") { alert("請輸入承接車數(0 代表拒絕)"); return; }
+  try {
+    await api(`/api/shopee/assignments/${id}`, { method: "PATCH", body: JSON.stringify({ confirmedTrucks: Number(n) }) });
+    await afterShopeeAssignChange();
+  } catch (err) { alert(err.message); }
+}
+
+async function resetShopeeAssignment(id) {
+  try { await api(`/api/shopee/assignments/${id}`, { method: "PATCH", body: JSON.stringify({ reset: true }) }); await afterShopeeAssignChange(); }
+  catch (err) { alert(err.message); }
+}
+
+async function removeShopeeAssignment(id) {
+  if (!confirm("確定要移除這個車隊的分派嗎?")) return;
+  try { await api(`/api/shopee/assignments/${id}`, { method: "DELETE" }); await afterShopeeAssignChange(); }
+  catch (err) { alert(err.message); }
+}
+
+function copyShopeeNotice() {
+  if (!shopeeAssignCache) return;
+  const { route, candidates } = shopeeAssignCache;
+  const asked = candidates.filter(c => c.requestedTrucks > 0 && c.assignmentStatus !== "已拒絕");
+  if (!asked.length) { alert("還沒有發送需求給任何車隊,請先填入要求車數並按「發送需求」"); return; }
+  const wd = ["日", "一", "二", "三", "四", "五", "六"][new Date(route.serviceDate + "T00:00:00").getDay()];
+  const text = [
+    "【蝦皮店到店 車趟需求】",
+    `日期:${route.serviceDate.replaceAll("-", "/")}(${wd})`,
+    `路線:${route.origin} → ${route.destination}`,
+    `車型:${route.vehicleType}`,
+    `總需求:${route.requiredTrucks} 車`,
+    "",
+    ...asked.map(c => `・${c.name} 需求 ${c.requestedTrucks} 車`),
+    "",
+    "請回覆可承接車數,謝謝。",
+  ].join("\n");
+  document.getElementById("copyModalTitle").textContent = "複製車隊通知文字";
+  document.getElementById("copyText").value = text;
+  document.getElementById("copyMsg").textContent = "";
+  document.getElementById("copyModal").classList.remove("hidden");
+}
+
+// ----- 夥伴車隊 -----
+async function loadShopeeFleets() {
+  try {
+    shopeeFleetsData = await api("/api/shopee/fleets");
+    renderShopeeFleets();
+  } catch (err) {
+    document.getElementById("shopeeFleetTable").innerHTML = `<div class="alert">${escapeHTML(err.message)}</div>`;
+  }
+}
+
+function renderShopeeFleets() {
+  const box = document.getElementById("shopeeFleetTable");
+  if (!shopeeFleetsData.length) { box.innerHTML = `<div class="empty">還沒有夥伴車隊,請先按「新增車隊」</div>`; return; }
+  box.innerHTML = `
+  <table>
+    <thead><tr><th>車隊</th><th>聯絡人</th><th>電話</th><th>單日上限</th><th>可承接路線</th><th>狀態</th><th>操作</th></tr></thead>
+    <tbody>
+      ${shopeeFleetsData.map(f => {
+        const active = f.routes.filter(r => r.active).length;
+        return `<tr>
+          <td><b>${escapeHTML(f.name)}</b>${f.note ? `<div class="muted">${escapeHTML(f.note)}</div>` : ""}</td>
+          <td>${escapeHTML(f.contactName || "-")}</td><td>${escapeHTML(f.phone || "-")}</td>
+          <td>${f.dailyCapacity > 0 ? f.dailyCapacity + " 車" : "不限"}</td>
+          <td>${active} 條${f.routes.length !== active ? `(另有 ${f.routes.length - active} 條停用)` : ""}</td>
+          <td>${f.status === "啟用" ? '<span class="badge green">啟用</span>' : '<span class="badge red">停用</span>'}</td>
+          <td><div class="btn-row">
+            <button class="action small" onclick="openShopeeFleetRoutesModal('${f.id}')">可承接路線</button>
+            <button class="action secondary small" onclick="openShopeeFleetModal('${f.id}')">編輯</button>
+            ${isAdmin() ? `<button class="action danger small" onclick="deleteShopeeFleet('${f.id}')">刪除</button>` : ""}
+          </div></td>
+        </tr>`;
+      }).join("")}
+    </tbody>
+  </table>`;
+}
+
+function openShopeeFleetModal(fleetId) {
+  const f = fleetId ? shopeeFleetsData.find(x => x.id === fleetId) : null;
+  document.getElementById("shopeeFleetError").classList.add("hidden");
+  document.getElementById("shopeeFleetEditId").value = f ? f.id : "";
+  document.getElementById("shopeeFleetModalTitle").textContent = f ? "編輯夥伴車隊" : "新增夥伴車隊";
+  document.getElementById("shopeeFleetSubmit").textContent = f ? "儲存變更" : "新增車隊";
+  document.getElementById("shopeeFleetName").value = f?.name || "";
+  document.getElementById("shopeeFleetContact").value = f?.contactName || "";
+  document.getElementById("shopeeFleetPhone").value = f?.phone || "";
+  document.getElementById("shopeeFleetCapacity").value = f ? f.dailyCapacity : 0;
+  document.getElementById("shopeeFleetNote").value = f?.note || "";
+  document.getElementById("shopeeFleetStatus").value = f?.status || "啟用";
+  document.getElementById("shopeeFleetStatusField").classList.toggle("hidden", !f);
+  document.getElementById("shopeeFleetModal").classList.remove("hidden");
+}
+
+async function deleteShopeeFleet(id) {
+  if (!confirm("確定要刪除這個車隊嗎?(已有承接紀錄的車隊無法刪除,請改為停用)")) return;
+  try { await api(`/api/shopee/fleets/${id}`, { method: "DELETE" }); await loadShopeeFleets(); }
+  catch (err) { alert(err.message); }
+}
+
+function openShopeeFleetRoutesModal(fleetId) {
+  shopeeFleetRoutesFleetId = fleetId;
+  document.getElementById("shopeeFleetRoutesError").classList.add("hidden");
+  document.getElementById("shopeeFleetRouteForm").reset();
+  fillShopeeTypeSelect("sfrType");
+  renderShopeeFleetRoutes();
+  document.getElementById("shopeeFleetRoutesModal").classList.remove("hidden");
+}
+
+function renderShopeeFleetRoutes() {
+  const f = shopeeFleetsData.find(x => x.id === shopeeFleetRoutesFleetId);
+  if (!f) return;
+  document.getElementById("shopeeFleetRoutesTitle").textContent = `${f.name}・可承接路線`;
+  document.getElementById("shopeeFleetRoutesList").innerHTML = f.routes.length ? `
+    <table>
+      <thead><tr><th>路線</th><th>車型</th><th>這條最多</th><th>狀態</th><th>操作</th></tr></thead>
+      <tbody>${f.routes.map(r => `
+        <tr>
+          <td>${escapeHTML(r.origin)} → ${escapeHTML(r.destination)}</td><td>${escapeHTML(r.vehicleType)}</td><td>${r.maxTrucks} 車</td>
+          <td>${r.active ? '<span class="badge green">啟用</span>' : '<span class="badge red">停用</span>'}</td>
+          <td><div class="btn-row">
+            <button class="action secondary small" onclick="editShopeeFleetRouteMax(${r.id}, ${r.maxTrucks})">改上限</button>
+            <button class="action secondary small" onclick="toggleShopeeFleetRoute(${r.id}, ${!r.active})">${r.active ? "停用" : "啟用"}</button>
+            <button class="action danger small" onclick="deleteShopeeFleetRoute(${r.id})">刪除</button>
+          </div></td>
+        </tr>`).join("")}</tbody>
+    </table>` : `<div class="empty">這個車隊還沒有設定可承接的路線</div>`;
+}
+
+async function shopeeFleetRouteAction(fn) {
+  const box = document.getElementById("shopeeFleetRoutesError");
+  box.classList.add("hidden");
+  try { await fn(); await loadShopeeFleets(); renderShopeeFleetRoutes(); return true; }
+  catch (err) { box.textContent = err.message; box.classList.remove("hidden"); return false; }
+}
+
+function editShopeeFleetRouteMax(id, current) {
+  const v = prompt("這條路線最多可承接幾車?", current);
+  if (v === null) return;
+  shopeeFleetRouteAction(() => api(`/api/shopee/fleet-routes/${id}`, { method: "PATCH", body: JSON.stringify({ maxTrucks: Number(v) }) }));
+}
+function toggleShopeeFleetRoute(id, active) {
+  shopeeFleetRouteAction(() => api(`/api/shopee/fleet-routes/${id}`, { method: "PATCH", body: JSON.stringify({ active }) }));
+}
+function deleteShopeeFleetRoute(id) {
+  if (!confirm("確定要刪除這條可承接路線嗎?")) return;
+  shopeeFleetRouteAction(() => api(`/api/shopee/fleet-routes/${id}`, { method: "DELETE" }));
+}
+
 function openUserModal() {
   document.getElementById("userModalError").classList.add("hidden");
   document.getElementById("userForm").reset();
@@ -1588,10 +2137,12 @@ document.querySelectorAll(".nav-btn[data-page]").forEach(button => {
       drivers: "司機資料管理",
       vehicles: "車輛資料管理",
       schedule: "班表",
+      shopee: "蝦皮店到店・車隊需求",
       users: "後台管理",
     };
     document.getElementById("pageTitle").textContent = titles[button.dataset.page];
     if (button.dataset.page === "schedule") loadSchedule();
+    if (button.dataset.page === "shopee") loadShopee();
   });
 });
 
@@ -1738,6 +2289,76 @@ document.getElementById("vehicleForm").addEventListener("submit", async e => {
   } catch (err) {
     errorBox.textContent = err.message;
     errorBox.classList.remove("hidden");
+  }
+});
+
+document.querySelectorAll(".tab[data-shopee]").forEach(t => t.addEventListener("click", () => {
+  document.querySelectorAll(".tab[data-shopee]").forEach(x => x.classList.remove("active"));
+  t.classList.add("active");
+  document.getElementById("shopeeDemandPane").classList.toggle("hidden", t.dataset.shopee !== "demand");
+  document.getElementById("shopeeFleetsPane").classList.toggle("hidden", t.dataset.shopee !== "fleets");
+}));
+
+document.getElementById("shopeeRouteForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const box = document.getElementById("shopeeRouteError");
+  box.classList.add("hidden");
+  const editId = document.getElementById("shopeeRouteEditId").value;
+  const payload = {
+    serviceDate: document.getElementById("shopeeRouteDate").value,
+    origin: document.getElementById("shopeeRouteOrigin").value,
+    destination: document.getElementById("shopeeRouteDest").value,
+    vehicleType: document.getElementById("shopeeRouteType").value,
+    requiredTrucks: Number(document.getElementById("shopeeRouteTrucks").value),
+    note: document.getElementById("shopeeRouteNote").value,
+  };
+  try {
+    await api(editId ? `/api/shopee/routes/${editId}` : "/api/shopee/routes", { method: editId ? "PATCH" : "POST", body: JSON.stringify(payload) });
+    closeModal("shopeeRouteModal");
+    // 新增到別的日期時,切過去才看得到剛建立的需求
+    if (!document.getElementById("shopeeAllDates").checked) document.getElementById("shopeeDate").value = payload.serviceDate;
+    await loadShopeeRoutes();
+  } catch (err) {
+    box.textContent = err.message;
+    box.classList.remove("hidden");
+  }
+});
+
+document.getElementById("shopeeFleetForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const box = document.getElementById("shopeeFleetError");
+  box.classList.add("hidden");
+  const editId = document.getElementById("shopeeFleetEditId").value;
+  const payload = {
+    name: document.getElementById("shopeeFleetName").value,
+    contactName: document.getElementById("shopeeFleetContact").value,
+    phone: document.getElementById("shopeeFleetPhone").value,
+    dailyCapacity: Number(document.getElementById("shopeeFleetCapacity").value || 0),
+    note: document.getElementById("shopeeFleetNote").value,
+  };
+  if (editId) payload.status = document.getElementById("shopeeFleetStatus").value;
+  try {
+    await api(editId ? `/api/shopee/fleets/${editId}` : "/api/shopee/fleets", { method: editId ? "PATCH" : "POST", body: JSON.stringify(payload) });
+    closeModal("shopeeFleetModal");
+    await loadShopeeFleets();
+  } catch (err) {
+    box.textContent = err.message;
+    box.classList.remove("hidden");
+  }
+});
+
+document.getElementById("shopeeFleetRouteForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const body = {
+    origin: document.getElementById("sfrOrigin").value,
+    destination: document.getElementById("sfrDest").value,
+    vehicleType: document.getElementById("sfrType").value,
+    maxTrucks: Number(document.getElementById("sfrMax").value),
+  };
+  const ok = await shopeeFleetRouteAction(() => api(`/api/shopee/fleets/${shopeeFleetRoutesFleetId}/routes`, { method: "POST", body: JSON.stringify(body) }));
+  if (ok) {
+    document.getElementById("shopeeFleetRouteForm").reset();
+    fillShopeeTypeSelect("sfrType");
   }
 });
 
