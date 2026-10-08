@@ -25,6 +25,7 @@ function serialize(s) {
     containerSizes: s.container_sizes,
     carriers: s.carriers,
     lineGroupIds: s.line_group_ids,
+    shopeeVehicleTypes: s.shopee_vehicle_types,
   };
 }
 
@@ -46,7 +47,7 @@ function cleanList(value, label, maxItems, maxLen) {
 
 router.put("/", requireRole("admin"), async (req, res, next) => {
   try {
-    const { systemName, announcement, locations, containerSizes, carriers, lineGroupIds } = req.body || {};
+    const { systemName, announcement, locations, containerSizes, carriers, lineGroupIds, shopeeVehicleTypes } = req.body || {};
     const changed = [];
 
     if (systemName !== undefined) {
@@ -88,6 +89,14 @@ router.put("/", requireRole("admin"), async (req, res, next) => {
       if (r.error) return res.status(400).json({ error: r.error });
       await saveSetting("line_group_ids", r.items);
       changed.push("LINE 群組");
+    }
+
+    if (shopeeVehicleTypes !== undefined) {
+      const r = cleanList(shopeeVehicleTypes, "蝦皮車型", 20, 20);
+      if (r.error) return res.status(400).json({ error: r.error });
+      if (!r.items.length) return res.status(400).json({ error: "蝦皮車型至少要有一項" });
+      await saveSetting("shopee_vehicle_types", r.items);
+      changed.push("蝦皮車型");
     }
 
     if (!changed.length) return res.status(400).json({ error: "沒有要修改的欄位" });

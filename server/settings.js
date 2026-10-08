@@ -1,6 +1,6 @@
 const { pool } = require("./db");
 
-const JSON_KEYS = ["locations", "container_sizes", "carriers", "line_group_ids"];
+const JSON_KEYS = ["locations", "container_sizes", "carriers", "line_group_ids", "shopee_vehicle_types"];
 
 async function getSettings() {
   const { rows } = await pool.query("SELECT key, value FROM settings");
@@ -11,6 +11,7 @@ async function getSettings() {
     container_sizes: ["20 呎", "40 呎", "45 呎"],
     carriers: [],
     line_group_ids: [],
+    shopee_vehicle_types: ["3.5T", "11T", "17T"],
   };
   for (const { key, value } of rows) {
     if (JSON_KEYS.includes(key)) {
