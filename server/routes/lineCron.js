@@ -3,6 +3,7 @@ const { pool } = require("../db");
 const { pushDispatchList, pushMessage, isConfigured } = require("../line");
 const { getSettings } = require("../settings");
 const { serializeOrder } = require("../orderService");
+const { todayInTaipei, addDays } = require("../dates");
 
 const router = express.Router();
 
@@ -25,7 +26,7 @@ router.post("/daily", async (req, res, next) => {
   try {
     if (!isConfigured()) return res.status(400).json({ error: "尚未設定 LINE 頻道" });
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayInTaipei();
     const { rows } = await pool.query("SELECT * FROM orders WHERE status IN ('待派車','已派車','執行中') ORDER BY time");
     const { rows: allToday } = await pool.query("SELECT status FROM orders WHERE time LIKE $1", [today + "%"]);
     const { drivers, vehicles } = await currentResources();
@@ -49,7 +50,7 @@ router.post("/weekly", async (req, res, next) => {
   try {
     if (!isConfigured()) return res.status(400).json({ error: "尚未設定 LINE 頻道" });
 
-    const since = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    const since = addDays(todayInTaipei(), -7);
     const { rows: recent } = await pool.query("SELECT status, dispatch_type, carrier FROM orders WHERE time >= $1", [since]);
     const { rows: pending } = await pool.query("SELECT * FROM orders WHERE status = '待派車' ORDER BY time");
     const { drivers, vehicles } = await currentResources();

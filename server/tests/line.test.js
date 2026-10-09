@@ -1,4 +1,5 @@
 const test = require("node:test");
+const { mock } = test;
 const assert = require("node:assert");
 const crypto = require("node:crypto");
 
@@ -38,6 +39,10 @@ let app, server, base;
 test.before(async () => {
   await pool.query("DROP TABLE IF EXISTS audit_logs, settings, line_daily_index, orders, drivers, vehicles, users CASCADE");
   await initDb();
+  // 種子資料的證照/保養日期是寫死的,到期後(例如 2026-11-18)派車檢查會讓測試變紅,
+  // 跟程式有沒有問題無關。測試開始前把會被用來派車的種子資料拉到很遠的未來。
+  await pool.query("UPDATE drivers SET license = '2099-12-31' WHERE id IN ('D001', 'D002')");
+  await pool.query("UPDATE vehicles SET maintenance = '2099-12-31' WHERE id IN ('V001', 'V002')");
   installFetchStub();
   app = require("../index");
   server = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
@@ -129,6 +134,38 @@ test("query commands reply with pending/stats text", async () => {
 
   await sendWebhook([{ type: "message", message: { type: "text", text: "說明" }, replyToken: "rt3", source: { type: "user", userId: "U1" } }]);
   assert.match(sentCalls[0].body.messages[0].text, /可用指令/);
+});
+
+test("LINE 「統計」「已完成」在台灣凌晨(UTC 還是前一天)仍以台灣日期計算", async () => {
+  // 台灣 2026-10-09 01:30 = UTC 2026-10-08 17:30。舊版用 UTC 日期,這時會把「今天」算成 10/08。
+  await pool.query(
+    `INSERT INTO orders (id, ship, container, from_location, to_location, time, size, status, dispatch_type, carrier)
+     VALUES ('O-TZ-1', 'TZ SHIP', 'TZCONT001', '高雄港', '台中', '2026-10-09T09:00', '20 呎', '已完成', 'CY', '陽明')`
+  );
+
+  const ask = async (text, token) => {
+    const body = JSON.stringify({ events: [{ type: "message", message: { type: "text", text }, replyToken: token, source: { type: "user", userId: "Utz" } }] });
+    sentCalls.length = 0;
+    await fetch(`${base}/api/line/webhook`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-line-signature": sign(body) },
+      body,
+    });
+    // 時鐘被凍結時 Date.now() 不會前進,所以這裡用「次數」而不是時間來限制等待
+    for (let i = 0; i < 200 && !sentCalls.length; i++) await new Promise((r) => setTimeout(r, 25));
+    return sentCalls[0]?.body.messages[0].text || "";
+  };
+
+  mock.timers.enable({ apis: ["Date"], now: new Date("2026-10-08T17:30:00Z") });
+  let stats, done;
+  try {
+    stats = await ask("統計", "rt-tz-1");
+    done = await ask("已完成", "rt-tz-2");
+  } finally {
+    mock.timers.reset();
+  }
+  assert.match(stats, /【今日統計】2026-10-09/);
+  assert.match(done, /TZCONT001/, "預定 10/09 的訂單在台灣 10/09 凌晨應算作「今天」");
 });
 
 test("push-line requires LINE group configured, then pushes and enables N號完成 reporting", async () => {

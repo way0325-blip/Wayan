@@ -7,6 +7,7 @@ const {
   lookupDailyIndex,
   getProfile,
 } = require("../line");
+const { todayInTaipei } = require("../dates");
 const { findOrder, findActiveOrderByContainerFragment, completeOrder } = require("../orderService");
 
 const router = express.Router();
@@ -43,7 +44,7 @@ async function listPendingText() {
 }
 
 async function listCompletedTodayText() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInTaipei();
   const { rows } = await pool.query(
     "SELECT * FROM orders WHERE status = '已完成' AND time LIKE $1 ORDER BY time",
     [today + "%"]
@@ -55,7 +56,7 @@ async function listCompletedTodayText() {
 }
 
 async function statsText() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInTaipei();
   const { rows } = await pool.query("SELECT status, time FROM orders");
   const todays = rows.filter((o) => String(o.time).startsWith(today));
   const count = (list, st) => list.filter((o) => o.status === st).length;

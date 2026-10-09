@@ -9,6 +9,7 @@ process.env.ADMIN_USERNAME = "admin";
 process.env.ADMIN_PASSWORD = "1234";
 
 const { pool, initDb } = require("../db");
+const { todayInTaipei, addDays } = require("../dates");
 const app = require("../index");
 
 let server;
@@ -48,6 +49,10 @@ async function call(method, path, headers, body) {
 test.before(async () => {
   await pool.query("DROP TABLE IF EXISTS audit_logs, settings, orders, drivers, vehicles, users CASCADE");
   await initDb();
+  // 種子資料的證照/保養日期是寫死的,到期後(例如 2026-11-18)派車檢查會讓測試變紅,
+  // 跟程式有沒有問題無關。測試開始前把會被用來派車的種子資料拉到很遠的未來。
+  await pool.query("UPDATE drivers SET license = '2099-12-31' WHERE id IN ('D001', 'D002')");
+  await pool.query("UPDATE vehicles SET maintenance = '2099-12-31' WHERE id IN ('V001', 'V002')");
   server = await new Promise((resolve) => {
     const s = app.listen(0, () => resolve(s));
   });
@@ -292,6 +297,30 @@ test("csv export neutralises formula injection", async () => {
   const text = await r.text();
   assert.ok(text.includes(`"'=HYPERLINK`));
   assert.ok(text.split("\n")[0].includes("船公司") && text.split("\n")[0].includes("調派類型"));
+});
+
+test("dispatch expiry is inclusive: valid through the expiry day (Taipei), rejected the day after", async () => {
+  const admin = await authFor("admin", "1234");
+  const today = todayInTaipei();
+  const order = { ship: "EXP SHIP", container: "EXP0001", from: "A", to: "B", time: "2030-01-01T09:00", size: "20 呎", dispatchType: "CY", carrier: "陽明" };
+
+  const mkDriver = async (name, license) => (await call("POST", "/api/drivers", admin, { name, phone: "0900", license })).data;
+  const mkVehicle = async (plate, maintenance) => (await call("POST", "/api/vehicles", admin, { plate, type: "曳引車", maintenance })).data;
+  const mkOrder = async (container, time) => (await call("POST", "/api/orders", admin, { ...order, container, time })).data;
+
+  const driverToday = await mkDriver("到期日當天司機", today);
+  const vehicleToday = await mkVehicle("EXP-TODAY", today);
+  const o1 = await mkOrder("EXP0001", "2030-01-01T09:00");
+  const ok = await call("PATCH", `/api/orders/${o1.id}/dispatch`, admin, { driverId: driverToday.id, vehicleId: vehicleToday.id });
+  assert.strictEqual(ok.status, 200, "到期日當天仍可派車(儀表板顯示的是「今天到期」)");
+
+  const driverYesterday = await mkDriver("昨天到期司機", addDays(today, -1));
+  const vehicleYesterday = await mkVehicle("EXP-YEST", addDays(today, -1));
+  const o2 = await mkOrder("EXP0002", "2030-01-02T09:00");
+  const bad = await call("PATCH", `/api/orders/${o2.id}/dispatch`, admin, { driverId: driverYesterday.id, vehicleId: vehicleYesterday.id });
+  assert.strictEqual(bad.status, 409);
+  assert.ok(bad.data.details.some((d) => d.includes("證照已逾期")));
+  assert.ok(bad.data.details.some((d) => d.includes("保養已逾期")));
 });
 
 test("login rate limiting blocks repeated failed attempts", async () => {
