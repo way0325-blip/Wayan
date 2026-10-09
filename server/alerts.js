@@ -1,15 +1,7 @@
 const { pool } = require("./db");
+const { daysUntil } = require("./dates");
 
 const WARN_DAYS = 30; // 到期前幾天開始提醒
-
-function daysUntil(dateStr) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const due = new Date(dateStr);
-  if (Number.isNaN(due.getTime())) return null;
-  due.setHours(0, 0, 0, 0);
-  return Math.round((due - today) / 86400000);
-}
 
 function toAlert({ type, label, dueDate, refId, refLabel }) {
   const days = daysUntil(dueDate);

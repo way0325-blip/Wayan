@@ -4,6 +4,7 @@ const { requireAuth, requireRole } = require("../auth");
 const { validateBody } = require("../validation");
 const { logAction } = require("../audit");
 const { getSettings } = require("../settings");
+const { isPastDate } = require("../dates");
 const { serializeOrder, findOrder, completeOrder } = require("../orderService");
 const { pushDispatchList } = require("../line");
 
@@ -194,7 +195,6 @@ router.patch(
 // 派車前的合法性檢查。keep 用於改派:沿用原本的司機/車輛時,不再要求其為閒置狀態
 async function validateDispatch(order, driver, vehicle, keep = {}) {
   const errors = [];
-  const now = new Date();
 
   if (!driver) errors.push("尚未選擇司機");
   if (!vehicle) errors.push("尚未選擇車輛");
@@ -204,8 +204,8 @@ async function validateDispatch(order, driver, vehicle, keep = {}) {
   if (vehicle && !keep.vehicle && vehicle.status !== "可用") {
     errors.push(`車輛目前狀態為「${vehicle.status}」`);
   }
-  if (driver && new Date(driver.license) < now) errors.push("司機證照已逾期");
-  if (vehicle && new Date(vehicle.maintenance) < now) errors.push("車輛保養已逾期,禁止派車");
+  if (driver && isPastDate(driver.license)) errors.push("司機證照已逾期");
+  if (vehicle && isPastDate(vehicle.maintenance)) errors.push("車輛保養已逾期,禁止派車");
 
   if (driver) {
     const clash = await pool.query(

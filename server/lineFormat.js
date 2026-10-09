@@ -1,7 +1,7 @@
+const { todayInTaipei, weekdayOf } = require("./dates");
+
 const TYPE_INFO = { "船邊": "船邊:碼頭 → 貨櫃場", "CY": "CY:貨櫃場 → 客戶端" };
 const TYPE_ORDER = ["船邊", "CY"];
-
-function pad(n) { return String(n).padStart(2, "0"); }
 
 function shortTime(t) {
   if (t && t.length >= 16) return `${t.slice(5, 7)}/${t.slice(8, 10)} ${t.slice(11, 16)}`;
@@ -11,10 +11,10 @@ function shortTime(t) {
 // 與前端「複製明細」完全一致的排序與分組規則,並在每筆前加上可回報用的編號。
 // 回傳 { text, numbering } — numbering 是 [{ seq, orderId }],供之後回報「N號完成」比對。
 function buildDispatchText(orders, drivers, vehicles, opts = {}) {
-  const now = new Date();
-  const weekday = ["日", "一", "二", "三", "四", "五", "六"][now.getDay()];
+  const today = todayInTaipei(opts.now);
+  const weekday = ["日", "一", "二", "三", "四", "五", "六"][weekdayOf(today)];
   const title = opts.title || "調派明細";
-  const lines = [`【${title}】${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())}(${weekday})　共 ${orders.length} 筆`];
+  const lines = [`【${title}】${today.replaceAll("-", "/")}(${weekday})　共 ${orders.length} 筆`];
 
   const byShip = new Map();
   orders.forEach((o) => {

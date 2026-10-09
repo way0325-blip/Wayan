@@ -1,4 +1,5 @@
 const test = require("node:test");
+const { mock } = test;
 const assert = require("node:assert");
 
 process.env.DATABASE_URL =
@@ -9,6 +10,7 @@ process.env.ADMIN_USERNAME = "admin";
 process.env.ADMIN_PASSWORD = "1234";
 
 const { pool, initDb } = require("../db");
+const { todayInTaipei, addDays } = require("../dates");
 
 let app, server, base, adminAuth;
 
@@ -39,9 +41,7 @@ test.after(async () => {
 });
 
 function daysFromNow(n) {
-  const d = new Date();
-  d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
+  return addDays(todayInTaipei(), n);
 }
 
 test("vehicle inspection_date is created, editable, and shows up correctly", async () => {
@@ -191,4 +191,32 @@ test("attendance works for driver type too, and rejects unknown staff id", async
   const view = await call("GET", "/api/attendance?type=driver&month=2026-10", adminAuth);
   assert.ok(view.data.staff.some((s) => s.id === driverId));
   assert.ok(view.data.records.some((r) => r.staff_id === driverId && r.status === "曠職"));
+});
+
+test("alerts at 01:30 Taipei (UTC still previous day): 「今天到期」 is day 0, not day 1", async () => {
+  // 台灣 2026-10-09 01:30 = UTC 2026-10-08 17:30
+  const v = await call("POST", "/api/vehicles", adminAuth, { plate: "TZ-0001", type: "曳引車", maintenance: "2099-01-01", inspectionDate: "2026-10-09" });
+  await call("POST", `/api/vehicles/${v.data.id}/maintenance-items`, adminAuth, { itemName: "昨天到期的項目", dueDate: "2026-10-08" });
+  await call("POST", `/api/vehicles/${v.data.id}/maintenance-items`, adminAuth, { itemName: "30天後的項目", dueDate: "2026-11-08" });
+  await call("POST", `/api/vehicles/${v.data.id}/maintenance-items`, adminAuth, { itemName: "31天後的項目", dueDate: "2026-11-09" });
+
+  const { computeAlerts } = require("../alerts");
+  mock.timers.enable({ apis: ["Date"], now: new Date("2026-10-08T17:30:00Z") });
+  let alerts;
+  try {
+    alerts = await computeAlerts();
+  } finally {
+    mock.timers.reset();
+  }
+
+  const insp = alerts.find((a) => a.type === "vehicle_inspection" && a.refLabel === "TZ-0001");
+  assert.strictEqual(insp.daysUntil, 0);
+  assert.match(insp.message, /今天到期/);
+
+  const yesterday = alerts.find((a) => a.label.includes("昨天到期的項目"));
+  assert.strictEqual(yesterday.daysUntil, -1);
+  assert.strictEqual(yesterday.severity, "overdue");
+
+  assert.ok(alerts.some((a) => a.label.includes("30天後的項目") && a.daysUntil === 30), "第 30 天剛好進入提醒範圍");
+  assert.ok(!alerts.some((a) => a.label.includes("31天後的項目")), "第 31 天還不提醒");
 });
