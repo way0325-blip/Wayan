@@ -31,6 +31,20 @@ function validDate(s) {
 
 const clean = (v) => String(v ?? "").trim();
 
+// LINE 連結只接受 https 的 line.me / *.line.me / lin.ee。
+// 這個值會被放進網頁的超連結,所以必須擋掉 javascript:、http:、帶帳密、仿冒網域(line.me.evil.com)。
+function lineLinkError(value) {
+  if (!value) return null; // 空白 = 清除
+  if (value.length > 300) return "LINE 連結不可超過 300 字";
+  let url;
+  try { url = new URL(value); } catch { return "LINE 連結格式不正確,請貼上完整網址(https://...)"; }
+  const hostOk = url.hostname === "line.me" || url.hostname.endsWith(".line.me") || url.hostname === "lin.ee";
+  if (url.protocol !== "https:" || !hostOk || url.username || url.password || url.port) {
+    return "LINE 連結只接受 https 開頭的 LINE 官方網址(line.me 或 lin.ee)";
+  }
+  return null;
+}
+
 async function vehicleTypeError(type) {
   const { shopee_vehicle_types } = await getSettings();
   return shopee_vehicle_types.includes(type)
@@ -240,7 +254,7 @@ router.delete("/routes/:id", requireRole("admin"), async (req, res, next) => {
 // ---------- 候選車隊與分派 ----------
 
 const CANDIDATE_SQL = `
-  SELECT f.id, f.name, f.contact_name, f.phone, f.daily_capacity, fr.max_trucks,
+  SELECT f.id, f.name, f.contact_name, f.phone, f.line_link, f.daily_capacity, fr.max_trucks,
          a.id AS assignment_id, a.requested_trucks, a.confirmed_trucks, a.status AS assignment_status
   FROM shopee_routes r
   JOIN fleet_routes fr ON fr.origin = r.origin AND fr.destination = r.destination
@@ -266,6 +280,7 @@ function serializeCandidate(row, usedElsewhere) {
     name: row.name,
     contactName: row.contact_name,
     phone: row.phone,
+    lineLink: row.line_link,
     maxTrucks: row.max_trucks,
     dailyCapacity: row.daily_capacity,
     usedOnOtherRoutes: usedElsewhere,
@@ -468,6 +483,7 @@ function serializeFleet(row, routes) {
     name: row.name,
     contactName: row.contact_name,
     phone: row.phone,
+    lineLink: row.line_link,
     dailyCapacity: row.daily_capacity,
     status: row.status,
     note: row.note,
@@ -494,10 +510,47 @@ router.get("/fleets", async (req, res, next) => {
   }
 });
 
+// 某車隊被要求的所有任務(供「任務訊息」勾選);可用 ?date= 只看某一天
+router.get("/fleets/:id/tasks", async (req, res, next) => {
+  try {
+    const date = req.query.date ? String(req.query.date) : null;
+    if (date && !validDate(date)) return res.status(400).json({ error: "date 格式需為 YYYY-MM-DD" });
+
+    const fleet = await pool.query("SELECT id, name, line_link FROM partner_fleets WHERE id = $1", [req.params.id]);
+    if (!fleet.rows.length) return res.status(404).json({ error: "找不到此車隊" });
+
+    const { rows } = await pool.query(
+      `SELECT a.id, a.route_id, r.service_date, r.origin, r.destination, r.vehicle_type,
+              a.requested_trucks, a.confirmed_trucks, a.status
+       FROM shopee_assignments a JOIN shopee_routes r ON r.id = a.route_id
+       WHERE a.fleet_id = $1 AND ($2::text IS NULL OR r.service_date = $2::text)
+       ORDER BY r.service_date, r.origin, r.destination, r.vehicle_type, a.id`,
+      [req.params.id, date]
+    );
+    res.json({
+      fleet: { id: fleet.rows[0].id, name: fleet.rows[0].name, lineLink: fleet.rows[0].line_link },
+      tasks: rows.map((t) => ({
+        assignmentId: t.id,
+        routeId: t.route_id,
+        serviceDate: t.service_date,
+        origin: t.origin,
+        destination: t.destination,
+        vehicleType: t.vehicle_type,
+        requestedTrucks: t.requested_trucks,
+        confirmedTrucks: t.confirmed_trucks,
+        status: t.status,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 const fleetSchema = {
   name: { required: true, type: "string", maxLength: 50, label: "車隊名稱" },
   contactName: { type: "string", maxLength: 50, label: "聯絡人" },
   phone: { type: "string", maxLength: 30, label: "電話" },
+  lineLink: { type: "string", maxLength: 300, label: "LINE 連結" },
   note: { type: "string", maxLength: 200, label: "備註" },
 };
 
@@ -507,14 +560,18 @@ router.post("/fleets", validateBody(fleetSchema), async (req, res, next) => {
     const capacity = req.body.dailyCapacity === undefined ? 0 : intInRange(req.body.dailyCapacity, 0, 1000);
     if (capacity === null) return res.status(400).json({ error: "單日車數上限必須是 0 到 1000 的整數(0 代表不限)" });
 
+    const lineLink = clean(req.body.lineLink);
+    const linkErr = lineLinkError(lineLink);
+    if (linkErr) return res.status(400).json({ error: linkErr });
+
     const dup = await pool.query("SELECT 1 FROM partner_fleets WHERE LOWER(name) = LOWER($1)", [name]);
     if (dup.rows.length) return res.status(409).json({ error: "已有同名的車隊" });
 
     const id = "F" + String(Date.now()).slice(-8);
     const { rows } = await pool.query(
-      `INSERT INTO partner_fleets (id, name, contact_name, phone, daily_capacity, note)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [id, name, clean(req.body.contactName), clean(req.body.phone), capacity, clean(req.body.note)]
+      `INSERT INTO partner_fleets (id, name, contact_name, phone, line_link, daily_capacity, note)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [id, name, clean(req.body.contactName), clean(req.body.phone), lineLink, capacity, clean(req.body.note)]
     );
     await logAction(req, "新增", "蝦皮車隊", id, name);
     res.status(201).json(serializeFleet(rows[0], []));
@@ -537,16 +594,23 @@ router.patch(
       const capacity = req.body.dailyCapacity === undefined ? cur.daily_capacity : intInRange(req.body.dailyCapacity, 0, 1000);
       if (capacity === null) return res.status(400).json({ error: "單日車數上限必須是 0 到 1000 的整數(0 代表不限)" });
 
+      const lineLink = req.body.lineLink !== undefined ? clean(req.body.lineLink) : cur.line_link;
+      if (req.body.lineLink !== undefined) {
+        const linkErr = lineLinkError(lineLink);
+        if (linkErr) return res.status(400).json({ error: linkErr });
+      }
+
       const dup = await pool.query("SELECT 1 FROM partner_fleets WHERE LOWER(name) = LOWER($1) AND id <> $2", [name, cur.id]);
       if (dup.rows.length) return res.status(409).json({ error: "已有同名的車隊" });
 
       const { rows } = await pool.query(
-        `UPDATE partner_fleets SET name = $1, contact_name = $2, phone = $3, daily_capacity = $4, status = $5, note = $6
-         WHERE id = $7 RETURNING *`,
+        `UPDATE partner_fleets SET name = $1, contact_name = $2, phone = $3, line_link = $4, daily_capacity = $5, status = $6, note = $7
+         WHERE id = $8 RETURNING *`,
         [
           name,
           req.body.contactName !== undefined ? clean(req.body.contactName) : cur.contact_name,
           req.body.phone !== undefined ? clean(req.body.phone) : cur.phone,
+          lineLink,
           capacity,
           req.body.status ?? cur.status,
           req.body.note !== undefined ? clean(req.body.note) : cur.note,
