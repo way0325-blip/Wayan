@@ -7,6 +7,7 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 
 const { initDb } = require("./db");
+const { resolveTrustProxy } = require("./trustProxy");
 const authRoutes = require("./routes/auth");
 const userRoutes = require("./routes/users");
 const driverRoutes = require("./routes/drivers");
@@ -23,6 +24,9 @@ const attendanceRoutes = require("./routes/attendance");
 const shopeeRoutes = require("./routes/shopee");
 
 const app = express();
+
+// 讓速率限制看到的是用戶真實 IP,而不是 Render 代理的 IP(詳見 server/trustProxy.js)
+app.set("trust proxy", resolveTrustProxy());
 const PORT = process.env.PORT || 3000;
 
 // 安全性 headers。放寬 CSP 讓前端的內嵌 <script>/<style> 仍可運作
