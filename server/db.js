@@ -115,6 +115,8 @@ async function initSchema() {
       UNIQUE (route_id, fleet_id)
     );
 
+    ALTER TABLE partner_fleets ADD COLUMN IF NOT EXISTS line_link TEXT NOT NULL DEFAULT '';
+
     CREATE TABLE IF NOT EXISTS attendance_records (
       id SERIAL PRIMARY KEY,
       staff_type TEXT NOT NULL CHECK (staff_type IN ('driver', 'dispatcher')),

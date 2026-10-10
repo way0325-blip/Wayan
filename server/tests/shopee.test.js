@@ -355,3 +355,107 @@ test("date filter validated; list is ordered; audit log records who did what (no
     assert.ok(kinds.has(k), `缺少操作紀錄:${k}`);
   }
 });
+
+test("fleet LINE link: only official https LINE URLs are accepted (it becomes a clickable link, so this is a security boundary)", async () => {
+  const good = [
+    "https://line.me/ti/g/AbC123",
+    "https://line.me/R/ti/p/@abc",
+    "https://page.line.me/xyz",
+    "https://lin.ee/AbCdEf",
+    "https://liff.line.me/123-abc",
+    "  https://lin.ee/trimmed  ",
+  ];
+  for (let i = 0; i < good.length; i++) {
+    const r = await api("POST", "/api/shopee/fleets", { name: `LINK-OK-${i}`, lineLink: good[i] });
+    assert.strictEqual(r.status, 201, `應接受:${good[i]} → ${JSON.stringify(r.data)}`);
+    assert.strictEqual(r.data.lineLink, good[i].trim());
+  }
+
+  const bad = [
+    "javascript:alert(1)",
+    "JaVaScRiPt:alert(1)",
+    "http://line.me/ti/g/x",            // 非 https
+    "https://evil.com/line.me",         // 路徑裡有 line.me
+    "https://line.me.evil.com/x",       // 仿冒子網域
+    "https://notline.me/x",
+    "https://xline.me/x",
+    "https://evil.com/?u=https://line.me/x",
+    "https://user:pw@line.me/x",        // 帶帳密
+    "https://line.me:8443/x",           // 非標準 port
+    "line://ti/g/abc",
+    "ftp://line.me/x",
+    "data:text/html,<script>alert(1)</script>",
+    "//line.me/x",
+    "not a url",
+    "https://line.me/" + "a".repeat(300),
+  ];
+  for (let i = 0; i < bad.length; i++) {
+    const r = await api("POST", "/api/shopee/fleets", { name: `LINK-BAD-${i}`, lineLink: bad[i] });
+    assert.strictEqual(r.status, 400, `應拒絕:${bad[i].slice(0, 60)}(實際 ${r.status})`);
+  }
+  const all = (await api("GET", "/api/shopee/fleets")).data;
+  assert.ok(!all.some((f) => f.name.startsWith("LINK-BAD-")), "被拒絕的不能留下任何資料");
+});
+
+test("fleet LINE link: set, change, clear via edit; invalid edit leaves the old value; shown in list and candidates", async () => {
+  const f = await newFleet("連結編輯車隊");
+  assert.strictEqual(f.lineLink, "", "沒填就是空字串");
+
+  const set = await api("PATCH", `/api/shopee/fleets/${f.id}`, { lineLink: "https://line.me/ti/g/first" }, ops);
+  assert.strictEqual(set.data.lineLink, "https://line.me/ti/g/first");
+
+  const badEdit = await api("PATCH", `/api/shopee/fleets/${f.id}`, { lineLink: "javascript:alert(1)" });
+  assert.strictEqual(badEdit.status, 400);
+  const unchanged = (await api("GET", "/api/shopee/fleets")).data.find((x) => x.id === f.id);
+  assert.strictEqual(unchanged.lineLink, "https://line.me/ti/g/first", "編輯失敗不能動到原本的連結");
+
+  const other = await api("PATCH", `/api/shopee/fleets/${f.id}`, { phone: "0999" });
+  assert.strictEqual(other.data.lineLink, "https://line.me/ti/g/first", "只改別的欄位時連結要保留");
+
+  await newCap(f.id, "連1", "連2", "11T", 2);
+  const route = await newRoute("連1", "連2", "11T", 1, "2026-10-20");
+  const cand = (await candidates(route.id)).candidates.find((c) => c.fleetId === f.id);
+  assert.strictEqual(cand.lineLink, "https://line.me/ti/g/first");
+
+  const cleared = await api("PATCH", `/api/shopee/fleets/${f.id}`, { lineLink: "" });
+  assert.strictEqual(cleared.status, 200);
+  assert.strictEqual(cleared.data.lineLink, "");
+});
+
+test("fleet tasks: lists only that fleet's assignments with route info, filterable by date, ordered by date", async () => {
+  const a = await newFleet("任務A車隊", { lineLink: "https://lin.ee/taskA" });
+  const b = await newFleet("任務B車隊");
+  await newCap(a.id, "任1", "任2", "3.5T", 5);
+  await newCap(a.id, "任3", "任4", "17T", 5);
+  await newCap(b.id, "任1", "任2", "3.5T", 5);
+
+  const late = await newRoute("任3", "任4", "17T", 2, "2026-10-22");
+  const early = await newRoute("任1", "任2", "3.5T", 3, "2026-10-21");
+  await api("PUT", `/api/shopee/routes/${late.id}/assignments`, { assignments: [{ fleetId: a.id, requestedTrucks: 2 }] });
+  await api("PUT", `/api/shopee/routes/${early.id}/assignments`, { assignments: [{ fleetId: a.id, requestedTrucks: 2 }, { fleetId: b.id, requestedTrucks: 1 }] });
+  const asgA = (await candidates(early.id)).candidates.find((c) => c.fleetId === a.id).assignmentId;
+  await api("PATCH", `/api/shopee/assignments/${asgA}`, { confirmedTrucks: 1 });
+
+  const r = await api("GET", `/api/shopee/fleets/${a.id}/tasks`, undefined, ops);
+  assert.strictEqual(r.status, 200);
+  assert.deepStrictEqual(r.data.fleet, { id: a.id, name: "任務A車隊", lineLink: "https://lin.ee/taskA" });
+  assert.deepStrictEqual(r.data.tasks.map((t) => t.serviceDate), ["2026-10-21", "2026-10-22"], "依日期排序");
+  const first = r.data.tasks[0];
+  assert.deepStrictEqual(
+    [first.origin, first.destination, first.vehicleType, first.requestedTrucks, first.confirmedTrucks, first.status],
+    ["任1", "任2", "3.5T", 2, 1, "已確認"]
+  );
+  assert.ok(r.data.tasks.every((t) => t.routeId !== undefined && t.assignmentId !== undefined));
+
+  const filtered = await api("GET", `/api/shopee/fleets/${a.id}/tasks?date=2026-10-22`);
+  assert.strictEqual(filtered.data.tasks.length, 1);
+  assert.strictEqual(filtered.data.tasks[0].origin, "任3");
+
+  const bTasks = (await api("GET", `/api/shopee/fleets/${b.id}/tasks`)).data.tasks;
+  assert.strictEqual(bTasks.length, 1, "B 看不到 A 的任務");
+  assert.strictEqual(bTasks[0].requestedTrucks, 1);
+
+  assert.strictEqual((await api("GET", `/api/shopee/fleets/${a.id}/tasks?date=abc`)).status, 400);
+  assert.strictEqual((await api("GET", "/api/shopee/fleets/NOPE/tasks")).status, 404);
+  assert.strictEqual((await call("GET", `/api/shopee/fleets/${a.id}/tasks`, {})).status, 401);
+});

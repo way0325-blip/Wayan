@@ -639,6 +639,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
         <div class="field"><label>聯絡人</label><input id="shopeeFleetContact" maxlength="50"></div>
         <div class="field"><label>電話</label><input id="shopeeFleetPhone" maxlength="30"></div>
         <div class="field"><label>單日車數上限(0 = 不限)</label><input id="shopeeFleetCapacity" type="number" min="0" max="1000" step="1" value="0"></div>
+        <div class="field full"><label>LINE 連結(群組邀請連結或官方帳號連結)</label><input id="shopeeFleetLine" maxlength="300" placeholder="https://line.me/ti/g/...  或  https://lin.ee/..."><div class="hint">只接受 https 開頭的 LINE 網址(line.me、lin.ee)。可留白。</div></div>
         <div class="field full"><label>備註</label><input id="shopeeFleetNote" maxlength="200"></div>
         <div class="field" id="shopeeFleetStatusField"><label>狀態</label><select id="shopeeFleetStatus"><option>啟用</option><option>停用</option></select></div>
       </div>
@@ -662,6 +663,33 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
       </div>
       <button class="primary">新增</button>
     </form>
+  </div>
+</div>
+
+<div id="shopeeFleetMsgModal" class="modal hidden">
+  <div class="modal-box" style="width:min(760px,100%)">
+    <div class="modal-head"><h3 id="shopeeFleetMsgTitle">任務訊息</h3><button class="close" onclick="closeModal('shopeeFleetMsgModal')">×</button></div>
+    <input type="hidden" id="shopeeFleetMsgFleetId">
+    <div class="toolbar">
+      <select id="shopeeFleetMsgTemplate" onchange="loadFleetMsgTasks()" style="width:auto">
+        <option value="request">需求通知(請回覆車數)</option>
+        <option value="confirm">確認通知(已確認車數)</option>
+      </select>
+      <input type="date" id="shopeeFleetMsgDate" onchange="loadFleetMsgTasks()" style="width:auto">
+      <label class="hint" style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="shopeeFleetMsgAllDates" onchange="loadFleetMsgTasks()"> 全部日期</label>
+    </div>
+    <div class="toolbar" style="margin-bottom:6px">
+      <label class="hint" style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="shopeeFleetMsgPickAll" onchange="toggleFleetMsgAll(this.checked)"> 全選</label>
+      <span id="shopeeFleetMsgCount" class="muted"></span>
+    </div>
+    <div id="shopeeFleetMsgTasks"></div>
+    <div class="field" style="margin-top:12px"><label>訊息內容(可直接修改)</label><textarea id="shopeeFleetMsgText" style="min-height:220px"></textarea></div>
+    <div class="btn-row" style="align-items:center">
+      <button class="action" onclick="copyFromTextarea('shopeeFleetMsgText', 'shopeeFleetMsgCopyMsg')">📋 複製訊息</button>
+      <span id="shopeeFleetMsgLink"></span>
+      <span id="shopeeFleetMsgCopyMsg" class="ok-msg"></span>
+    </div>
+    <div class="hint" style="margin-top:8px">做法:勾選任務 → 按「複製訊息」→ 按「開啟 LINE」→ 到對話貼上送出。更換日期、範本或勾選會重新產生文字,你手動改過的內容會被覆蓋。</div>
   </div>
 </div>
 
@@ -1792,11 +1820,12 @@ async function refreshShopeeAssign() {
       : "單日不限車數";
     return `
     <div class="fleet-row">
-      <div><b>${escapeHTML(c.name)}</b> <span class="muted">${escapeHTML(c.contactName || "")} ${escapeHTML(c.phone || "")}</span></div>
+      <div><b>${escapeHTML(c.name)}</b> <span class="muted">${escapeHTML(c.contactName || "")} ${escapeHTML(c.phone || "")}</span> ${lineLinkHtml(c.lineLink, "LINE") || ""}</div>
       <div class="muted">這條路線最多 ${c.maxTrucks} 車・${capText}</div>
       <div class="btn-row" style="align-items:center">
         要求 <input type="number" class="req-input" data-fleet="${c.fleetId}" min="1" max="${c.maxTrucks}" step="1" value="${c.requestedTrucks || ""}" placeholder="0"> 車
         ${reply} ${remove}
+        ${c.assignmentId ? `<button class="action secondary small" onclick="openShopeeFleetMsgModal('${c.fleetId}', { routeId: '${route.id}', date: '${route.serviceDate}' })">📨 傳訊息</button>` : ""}
       </div>
     </div>`;
   }).join("");
@@ -1896,18 +1925,19 @@ function renderShopeeFleets() {
   if (!shopeeFleetsData.length) { box.innerHTML = `<div class="empty">還沒有夥伴車隊,請先按「新增車隊」</div>`; return; }
   box.innerHTML = `
   <table>
-    <thead><tr><th>車隊</th><th>聯絡人</th><th>電話</th><th>單日上限</th><th>可承接路線</th><th>狀態</th><th>操作</th></tr></thead>
+    <thead><tr><th>車隊</th><th>聯絡人</th><th>電話</th><th>LINE</th><th>單日上限</th><th>可承接路線</th><th>狀態</th><th>操作</th></tr></thead>
     <tbody>
       ${shopeeFleetsData.map(f => {
         const active = f.routes.filter(r => r.active).length;
         return `<tr>
           <td><b>${escapeHTML(f.name)}</b>${f.note ? `<div class="muted">${escapeHTML(f.note)}</div>` : ""}</td>
-          <td>${escapeHTML(f.contactName || "-")}</td><td>${escapeHTML(f.phone || "-")}</td>
+          <td>${escapeHTML(f.contactName || "-")}</td><td>${escapeHTML(f.phone || "-")}</td><td>${lineLinkHtml(f.lineLink) || "-"}</td>
           <td>${f.dailyCapacity > 0 ? f.dailyCapacity + " 車" : "不限"}</td>
           <td>${active} 條${f.routes.length !== active ? `(另有 ${f.routes.length - active} 條停用)` : ""}</td>
           <td>${f.status === "啟用" ? '<span class="badge green">啟用</span>' : '<span class="badge red">停用</span>'}</td>
           <td><div class="btn-row">
-            <button class="action small" onclick="openShopeeFleetRoutesModal('${f.id}')">可承接路線</button>
+            <button class="action small" onclick="openShopeeFleetMsgModal('${f.id}')">📨 任務訊息</button>
+            <button class="action secondary small" onclick="openShopeeFleetRoutesModal('${f.id}')">可承接路線</button>
             <button class="action secondary small" onclick="openShopeeFleetModal('${f.id}')">編輯</button>
             ${isAdmin() ? `<button class="action danger small" onclick="deleteShopeeFleet('${f.id}')">刪除</button>` : ""}
           </div></td>
@@ -1927,6 +1957,7 @@ function openShopeeFleetModal(fleetId) {
   document.getElementById("shopeeFleetContact").value = f?.contactName || "";
   document.getElementById("shopeeFleetPhone").value = f?.phone || "";
   document.getElementById("shopeeFleetCapacity").value = f ? f.dailyCapacity : 0;
+  document.getElementById("shopeeFleetLine").value = f?.lineLink || "";
   document.getElementById("shopeeFleetNote").value = f?.note || "";
   document.getElementById("shopeeFleetStatus").value = f?.status || "啟用";
   document.getElementById("shopeeFleetStatusField").classList.toggle("hidden", !f);
@@ -1986,6 +2017,123 @@ function toggleShopeeFleetRoute(id, active) {
 function deleteShopeeFleetRoute(id) {
   if (!confirm("確定要刪除這條可承接路線嗎?")) return;
   shopeeFleetRouteAction(() => api(`/api/shopee/fleet-routes/${id}`, { method: "DELETE" }));
+}
+
+// ----- 車隊 LINE 連結與任務訊息 -----
+const FLEET_MSG_WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
+let fleetMsgData = { fleet: null, tasks: [] };
+let fleetMsgPreselectRouteId = null;
+
+// 伺服器已驗證過;這裡再擋一次,避免資料庫裡有不合格的值被渲染成可點的連結。不合格回傳 null
+function lineLinkHtml(link, label = "開啟 LINE") {
+  if (!/^https:\/\/(?:[a-z0-9-]+\.)*line\.me(?:[\/?#]|$)|^https:\/\/lin\.ee(?:[\/?#]|$)/i.test(link || "")) return null;
+  return `<a class="action secondary small" style="text-decoration:none;display:inline-block;color:#fff" href="${escapeHTML(link)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+}
+
+async function copyFromTextarea(textareaId, msgId) {
+  const ta = document.getElementById(textareaId);
+  const msg = document.getElementById(msgId);
+  if (!ta.value) { msg.textContent = "沒有內容可以複製,請先勾選任務"; return; }
+  try {
+    await navigator.clipboard.writeText(ta.value);
+    msg.textContent = "已複製 ✓ 再按「開啟 LINE」貼上";
+  } catch (e) {
+    try {
+      ta.select();
+      msg.textContent = document.execCommand("copy") ? "已複製 ✓ 再按「開啟 LINE」貼上" : "請長按文字,手動選「拷貝」";
+    } catch (e2) { msg.textContent = "請長按文字,手動選「拷貝」"; }
+  }
+}
+
+async function openShopeeFleetMsgModal(fleetId, opts = {}) {
+  fleetMsgPreselectRouteId = opts.routeId || null;
+  document.getElementById("shopeeFleetMsgFleetId").value = fleetId;
+  document.getElementById("shopeeFleetMsgTemplate").value = "request";
+  document.getElementById("shopeeFleetMsgCopyMsg").textContent = "";
+  document.getElementById("shopeeFleetMsgDate").value = opts.date || document.getElementById("shopeeDate").value || localToday();
+  document.getElementById("shopeeFleetMsgAllDates").checked = false;
+  document.getElementById("shopeeFleetMsgModal").classList.remove("hidden");
+  await loadFleetMsgTasks();
+}
+
+async function loadFleetMsgTasks() {
+  const fleetId = document.getElementById("shopeeFleetMsgFleetId").value;
+  const allDates = document.getElementById("shopeeFleetMsgAllDates").checked;
+  const date = document.getElementById("shopeeFleetMsgDate").value;
+  const box = document.getElementById("shopeeFleetMsgTasks");
+  document.getElementById("shopeeFleetMsgCopyMsg").textContent = "";
+  try {
+    fleetMsgData = await api(`/api/shopee/fleets/${fleetId}/tasks` + (!allDates && date ? `?date=${encodeURIComponent(date)}` : ""));
+  } catch (err) {
+    box.innerHTML = `<div class="alert">${escapeHTML(err.message)}</div>`;
+    return;
+  }
+  const { fleet, tasks } = fleetMsgData;
+  document.getElementById("shopeeFleetMsgTitle").textContent = `📨 傳給 ${fleet.name}`;
+  document.getElementById("shopeeFleetMsgLink").innerHTML =
+    lineLinkHtml(fleet.lineLink, `🔗 開啟 ${escapeHTML(fleet.name)} 的 LINE`) ||
+    `<span class="hint">這個車隊還沒設定 LINE 連結(到「夥伴車隊」編輯)</span>`;
+
+  // 預設勾選:從分派視窗進來只勾那一條路線;否則依範本(需求通知→待回覆,確認通知→已確認)
+  const template = document.getElementById("shopeeFleetMsgTemplate").value;
+  const preselect = fleetMsgPreselectRouteId; // 先存起來:下面要清掉,但 defaultOn 之後才會被呼叫
+  fleetMsgPreselectRouteId = null;
+  const defaultOn = t => preselect
+    ? t.routeId === preselect
+    : t.status === (template === "confirm" ? "已確認" : "待回覆");
+
+  if (!tasks.length) {
+    box.innerHTML = `<div class="empty">${allDates || !date ? "這個車隊還沒有被要求的任務" : "這一天這個車隊沒有任務,可勾選「全部日期」查看"}</div>`;
+  } else {
+    box.innerHTML = tasks.map((t, i) => `
+      <label class="fleet-row" style="cursor:pointer;grid-template-columns:24px 1fr;align-items:start">
+        <input type="checkbox" class="fmsg-pick" data-i="${i}" ${defaultOn(t) ? "checked" : ""} onchange="rebuildFleetMsg()">
+        <div>
+          <b>${t.serviceDate} ${escapeHTML(t.origin)} → ${escapeHTML(t.destination)}</b>・${escapeHTML(t.vehicleType)}
+          <div class="muted">要求 ${t.requestedTrucks} 車${t.status === "已確認" ? `・已確認 ${t.confirmedTrucks} 車` : ""} ${shopeeStatusBadge(t.status)}</div>
+        </div>
+      </label>`).join("");
+  }
+  rebuildFleetMsg();
+}
+
+function toggleFleetMsgAll(on) {
+  document.querySelectorAll("#shopeeFleetMsgTasks .fmsg-pick").forEach(c => { c.checked = on; });
+  rebuildFleetMsg();
+}
+
+function rebuildFleetMsg() {
+  const { fleet, tasks } = fleetMsgData;
+  const picked = [...document.querySelectorAll("#shopeeFleetMsgTasks .fmsg-pick")]
+    .filter(c => c.checked).map(c => tasks[Number(c.dataset.i)]);
+  document.getElementById("shopeeFleetMsgCount").textContent = `已選 ${picked.length} / ${tasks.length} 筆`;
+  const all = document.getElementById("shopeeFleetMsgPickAll");
+  all.checked = tasks.length > 0 && picked.length === tasks.length;
+  all.indeterminate = picked.length > 0 && picked.length < tasks.length;
+  document.getElementById("shopeeFleetMsgText").value =
+    picked.length ? buildFleetMessage(fleet, picked, document.getElementById("shopeeFleetMsgTemplate").value) : "";
+}
+
+// 依日期分段、連續編號。tasks 已由後端依日期排序
+function buildFleetMessage(fleet, tasks, template) {
+  const confirmMode = template === "confirm";
+  const lines = [confirmMode ? "【蝦皮店到店 車趟確認】" : "【蝦皮店到店 車趟需求】", `致:${fleet.name}`];
+  let n = 0;
+  let lastDate = null;
+  for (const t of tasks) {
+    if (t.serviceDate !== lastDate) {
+      const [y, m, d] = t.serviceDate.split("-").map(Number);
+      lines.push("", `${t.serviceDate.replaceAll("-", "/")}(${FLEET_MSG_WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]})`);
+      lastDate = t.serviceDate;
+    }
+    n++;
+    const qty = confirmMode
+      ? (t.status === "已確認" ? `確認 ${t.confirmedTrucks} 車` : `要求 ${t.requestedTrucks} 車(尚未確認)`)
+      : `需求 ${t.requestedTrucks} 車`;
+    lines.push(`${n}. ${t.origin} → ${t.destination}・${t.vehicleType}・${qty}`);
+  }
+  lines.push("", confirmMode ? "以上車趟已確認,請依時間準時出車,謝謝。" : "請回覆各路線可承接車數,謝謝。");
+  return lines.join("\n");
 }
 
 function openUserModal() {
@@ -2343,6 +2491,7 @@ document.getElementById("shopeeFleetForm").addEventListener("submit", async e =>
     contactName: document.getElementById("shopeeFleetContact").value,
     phone: document.getElementById("shopeeFleetPhone").value,
     dailyCapacity: Number(document.getElementById("shopeeFleetCapacity").value || 0),
+    lineLink: document.getElementById("shopeeFleetLine").value,
     note: document.getElementById("shopeeFleetNote").value,
   };
   if (editId) payload.status = document.getElementById("shopeeFleetStatus").value;
