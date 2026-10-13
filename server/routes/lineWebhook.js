@@ -39,7 +39,7 @@ async function listPendingText() {
   const { rows } = await pool.query("SELECT * FROM orders WHERE status = '待派車' ORDER BY time");
   if (!rows.length) return "目前沒有待派車的訂單。";
   return "【待派車】共 " + rows.length + " 筆\n" + rows
-    .map((o, i) => `${i + 1}. ${o.container}｜${o.from}→${o.to}｜${o.time.replace("T", " ")}`)
+    .map((o, i) => `${i + 1}. ${o.container || "(待補櫃號)"}｜${o.from}→${o.to}｜${o.time.replace("T", " ")}`)
     .join("\n");
 }
 
@@ -51,7 +51,7 @@ async function listCompletedTodayText() {
   );
   if (!rows.length) return "今天目前還沒有已完成的訂單。";
   return "【今日已完成】共 " + rows.length + " 筆\n" + rows
-    .map((o, i) => `${i + 1}. ${o.container}｜${o.from}→${o.to}`)
+    .map((o, i) => `${i + 1}. ${o.container || "(待補櫃號)"}｜${o.from}→${o.to}`)
     .join("\n");
 }
 

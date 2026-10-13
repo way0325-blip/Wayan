@@ -26,7 +26,8 @@ function buildDispatchText(orders, drivers, vehicles, opts = {}) {
   let n = 0;
   for (const [ship, items] of byShip) {
     const carrierNames = [...new Set(items.map((i) => i.carrier).filter(Boolean))].join("、");
-    lines.push("", `🚢 ${ship}${carrierNames ? `(${carrierNames})` : ""}`);
+    const shipCalls = [...new Set(items.map((i) => i.shipCall).filter((c) => c && ship !== `船掛 ${c}`))].join("、");
+    lines.push("", `🚢 ${ship}${carrierNames ? `(${carrierNames})` : ""}${shipCalls ? `・船掛 ${shipCalls}` : ""}`);
     for (const t of TYPE_ORDER) {
       const its = items
         .filter((i) => i.dispatchType === t)
@@ -39,7 +40,7 @@ function buildDispatchText(orders, drivers, vehicles, opts = {}) {
         n++;
         numbering.push({ seq: n, orderId: o.id });
         lines.push(
-          `${n}. ${o.container}　${o.size}`,
+          `${n}. ${o.container || "(待補櫃號)"}　${o.size}`,
           `   ${o.from} → ${o.to}`,
           `   ${shortTime(o.time)}`,
           driver || vehicle

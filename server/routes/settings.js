@@ -77,11 +77,11 @@ router.put("/", requireRole("admin"), async (req, res, next) => {
     }
 
     if (carriers !== undefined) {
-      const r = cleanList(carriers, "船公司", 30, 30);
+      const r = cleanList(carriers, "船商", 30, 30);
       if (r.error) return res.status(400).json({ error: r.error });
-      if (!r.items.length) return res.status(400).json({ error: "船公司至少要有一項" });
+      if (!r.items.length) return res.status(400).json({ error: "船商至少要有一項" });
       await saveSetting("carriers", r.items);
-      changed.push("船公司");
+      changed.push("船商");
     }
 
     if (lineGroupIds !== undefined) {
