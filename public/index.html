@@ -218,6 +218,17 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
 .fleet-row { padding: 12px 14px; margin-bottom: 10px; border: 1px solid var(--line); border-radius: 12px; background: rgba(7,20,38,.5); display: grid; gap: 8px; }
 .fleet-row input[type="number"] { width: 90px; padding: 8px 10px; }
 .sum-line { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 6px 0 14px; font-size: 14px; }
+.form-section { margin: 6px 0 8px; color: var(--cyan); font-size: 13px; letter-spacing: .5px; }
+.qty-table { min-width: 0; width: auto; margin: 4px 0 6px; }
+.qty-table th, .qty-table td { text-align: center; padding: 8px 12px; }
+.qty-table input { width: 84px; text-align: center; padding: 9px 6px; }
+.qty-total { font-size: 24px; font-weight: bold; color: var(--cyan); }
+.qty-total.over { color: var(--red); }
+.stats-row { cursor: pointer; }
+.stats-row:hover { background: rgba(67,217,255,.07); }
+.stats-total td { font-weight: bold; border-top: 2px solid var(--line); }
+.stat-num { text-align: center; }
+.stat-zero { color: var(--muted); }
 .alert.warn { background: rgba(255,209,102,.12); color: var(--yellow); border-color: rgba(255,209,102,.35); }
 
 @media (max-width: 900px) {
@@ -325,6 +336,19 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
     </section>
 
     <section id="orders" class="page">
+      <details id="taskStatsPanel" class="panel" open style="margin-bottom:20px">
+        <summary style="cursor:pointer;font-weight:bold;font-size:16px">📊 總數車數統計(依作業日期)</summary>
+        <div class="toolbar" style="margin-top:12px">
+          <button class="action secondary small" onclick="shiftTaskStatsDate(-1)">◀</button>
+          <input type="date" id="taskStatsDate" onchange="document.getElementById('taskStatsAll').checked = false; loadTaskStats()" style="width:auto">
+          <button class="action secondary small" onclick="shiftTaskStatsDate(1)">▶</button>
+          <label class="hint" style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="taskStatsAll" onchange="loadTaskStats()"> 全部日期</label>
+          <button class="action secondary small" onclick="loadTaskStats()">🔄</button>
+        </div>
+        <div id="taskStatsTable" class="table-wrap"></div>
+        <div class="hint" style="margin-top:8px">點一列,下方訂單列表會篩選到該船(清除搜尋框即可還原)。「待派車」是還沒指派司機車輛的剩餘車數。</div>
+      </details>
+
       <div class="split">
         <div class="panel list-pane">
           <div class="toolbar">
@@ -338,7 +362,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
           </div>
           <div class="filters">
             <input id="orderSearch" placeholder="搜尋船名、櫃號、起訖點">
-            <select id="carrierFilter"><option value="">全部船公司</option></select>
+            <select id="carrierFilter"><option value="">全部船商</option></select>
             <select id="orderStatus">
               <option value="">全部狀態</option><option>待派車</option><option>已派車</option><option>執行中</option><option>已完成</option>
             </select>
@@ -453,7 +477,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
         <div class="field"><label>系統名稱</label><input id="setName" maxlength="50"></div>
         <div class="field"><label>公告(顯示在儀表板最上方,留空則不顯示)</label><textarea id="setAnnouncement" maxlength="500"></textarea></div>
         <div class="field"><label>常用地點(一行一個,建立訂單時可快速選擇)</label><textarea id="setLocations"></textarea></div>
-        <div class="field"><label>船公司(一行一個,建立訂單與篩選時使用)</label><textarea id="setCarriers"></textarea></div>
+        <div class="field"><label>船商(一行一個,輸入訂單時的建議清單;也可以自行輸入清單以外的船商)</label><textarea id="setCarriers"></textarea></div>
         <div class="field">
           <label>LINE 群組 ID(一行一個)</label>
           <textarea id="setLineGroups" placeholder="把 LINE bot 加入群組後,群組會自動回覆一組 ID,貼在這裡"></textarea>
@@ -478,7 +502,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
         <h3>匯出</h3>
         <button class="action secondary" onclick="exportCSV()">匯出全部訂單 CSV</button>
         <h3 style="margin-top:24px">批次匯入訂單</h3>
-        <p class="hint">CSV 需要欄位:船公司、調派類型(CY 或 船邊)、船名航次、貨櫃編號、起點、終點、作業時間(例如 2026-10-01 09:00)、尺寸。船公司與尺寸必須是後台設定清單內的值。匯入的訂單一律是「待派車」。只要有一列錯誤,整批都不會寫入。</p>
+        <p class="hint">CSV 欄位:船掛(可選)、船商、調派類型(CY 或 船邊)、船名航次(沒填時要有船掛)、貨櫃編號、起點、終點、作業時間(例如 2026-10-01 09:00)、尺寸。船商可自由填寫,尺寸必須是後台設定清單內的值。匯入的訂單一律是「待派車」。只要有一列錯誤,整批都不會寫入。</p>
         <div class="toolbar">
           <button class="action secondary" onclick="downloadTemplate()">下載範本</button>
           <input id="importFile" type="file" accept=".csv,text/csv">
@@ -496,27 +520,52 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
     <div id="orderModalError" class="alert hidden"></div>
     <form id="orderForm">
       <input id="orderEditId" type="hidden">
+
+      <div class="form-section">任務資訊</div>
       <div class="form-grid">
-        <div class="field"><label>船公司</label><select id="orderCarrier" required></select></div>
+        <div class="field"><label>船掛</label><input id="orderShipCall" maxlength="30" placeholder="自行輸入,例如:152667"></div>
+        <div class="field"><label>船商</label><input id="orderCarrier" list="carrierList" maxlength="30" required placeholder="自行輸入,例如:愛媛"></div>
+        <div class="field"><label>船名／航次</label><input id="orderShip" maxlength="100" placeholder="可留白(以船掛代替)"></div>
         <div class="field"><label>調派類型</label>
           <select id="orderType"><option value="船邊">船邊</option><option value="CY">CY</option></select>
         </div>
         <div class="field full"><div class="hint" id="typeHint" style="margin:-6px 0 0"></div></div>
-        <div class="field full"><label>船名／航次</label><input id="orderShip" required placeholder="例如：EVER ACE / 012W"></div>
-        <div class="field"><label>貨櫃編號</label><input id="orderContainer" required placeholder="例如：EMCU1234567"></div>
-        <div class="field"><label>起點</label><input id="orderFrom" list="locationList" required placeholder="例如：高雄港"></div>
-        <div class="field"><label>終點</label><input id="orderTo" list="locationList" required placeholder="例如：台中倉庫"></div>
-        <div class="field"><label>作業時間</label><input id="orderTime" type="datetime-local" required></div>
-        <div class="field">
-          <label>貨櫃尺寸</label>
-          <select id="orderSize"></select>
+      </div>
+
+      <div id="orderQtyBlock">
+        <div class="form-section">車數(依尺寸一次建立多筆訂單,每台車一筆)</div>
+        <table class="qty-table">
+          <thead><tr><th>20</th><th>40</th><th>HQ</th><th>總計車數</th></tr></thead>
+          <tbody><tr>
+            <td><input id="orderQty20" type="number" min="0" max="200" step="1" inputmode="numeric" placeholder="0" oninput="refreshOrderQtyUI()"></td>
+            <td><input id="orderQty40" type="number" min="0" max="200" step="1" inputmode="numeric" placeholder="0" oninput="refreshOrderQtyUI()"></td>
+            <td><input id="orderQtyHQ" type="number" min="0" max="200" step="1" inputmode="numeric" placeholder="0" oninput="refreshOrderQtyUI()"></td>
+            <td><span id="orderQtyTotal" class="qty-total">0</span></td>
+          </tr></tbody>
+        </table>
+        <div id="orderQtyHint" class="hint"></div>
+      </div>
+
+      <div id="orderSingleBlock">
+        <div class="form-section">單筆貨櫃</div>
+        <div class="form-grid">
+          <div class="field"><label>貨櫃編號</label><input id="orderContainer" maxlength="30" placeholder="例如:EMCU1234567"></div>
+          <div class="field"><label>貨櫃尺寸</label><select id="orderSize"></select></div>
         </div>
+      </div>
+
+      <div class="form-section">路線與時間</div>
+      <div class="form-grid">
+        <div class="field"><label>起點</label><input id="orderFrom" list="locationList" required placeholder="例如:高雄港"></div>
+        <div class="field"><label>終點</label><input id="orderTo" list="locationList" required placeholder="例如:台中倉庫"></div>
+        <div class="field full"><label>作業時間(日期預設今天)</label><input id="orderTime" type="datetime-local" required></div>
       </div>
       <button id="orderSubmitBtn" class="primary">建立訂單</button>
     </form>
   </div>
 </div>
 
+<datalist id="carrierList"></datalist>
 <datalist id="locationList"></datalist>
 
 <div id="dispatchModal" class="modal hidden">
@@ -825,6 +874,7 @@ async function loadAll() {
   if (isAdmin()) users = results[5];
 
   refresh();
+  loadTaskStats(); // 不等待;失敗只會影響統計表
 }
 
 function refresh() {
@@ -868,14 +918,14 @@ function orderTable(list) {
   if (!list.length) return `<div class="empty">目前沒有訂單資料</div>`;
   return `
   <table>
-    <thead><tr><th>船公司</th><th>類型</th><th>船名／航次</th><th>貨櫃編號</th><th>起點 → 終點</th><th>時間</th><th>狀態</th><th>派遣資訊</th></tr></thead>
+    <thead><tr><th>船商</th><th>類型</th><th>船名／航次</th><th>貨櫃編號</th><th>起點 → 終點</th><th>時間</th><th>狀態</th><th>派遣資訊</th></tr></thead>
     <tbody>
       ${list.map(o => {
         const driver = drivers.find(d => d.id === o.driverId);
         const vehicle = vehicles.find(v => v.id === o.vehicleId);
         return `<tr>
           <td>${escapeHTML(o.carrier || "-")}</td><td>${typeTag(o.dispatchType)}</td>
-          <td>${escapeHTML(o.ship)}</td><td>${escapeHTML(o.container)}</td>
+          <td>${escapeHTML(o.ship)}</td><td>${escapeHTML(containerText(o))}</td>
           <td>${escapeHTML(o.from)} → ${escapeHTML(o.to)}</td><td>${formatDate(o.time)}</td>
           <td>${statusBadge(o.status)}</td>
           <td>${driver ? escapeHTML(driver.name) : "-"} / ${vehicle ? escapeHTML(vehicle.plate) : "-"}</td>
@@ -890,7 +940,7 @@ function filteredOrders() {
   const status = document.getElementById("orderStatus").value;
   const carrier = document.getElementById("carrierFilter").value;
   return orders.filter(o => {
-    const text = `${o.id} ${o.container} ${o.from} ${o.to} ${o.ship} ${o.carrier}`.toLowerCase();
+    const text = `${o.id} ${o.container} ${o.from} ${o.to} ${o.ship} ${o.shipCall} ${o.carrier}`.toLowerCase();
     return text.includes(search) && (!status || o.status === status)
       && (!carrier || o.carrier === carrier) && (!typeFilter || o.dispatchType === typeFilter);
   });
@@ -905,7 +955,7 @@ function orderRow(o) {
   <div class="order-row ${o.id === selectedOrderId ? "selected" : ""} ${picked ? "picked" : ""}" onclick="selectOrder('${o.id}')">
     <input type="checkbox" class="pick" ${picked ? "checked" : ""} onclick="event.stopPropagation()" onchange="togglePick('${o.id}', this.checked)" aria-label="勾選此訂單">
     <div class="rowbody">
-      <div class="line1"><b>${escapeHTML(o.container)}</b>${statusBadge(o.status)}</div>
+      <div class="line1"><b>${escapeHTML(containerText(o))}</b>${statusBadge(o.status)}</div>
       <div class="line2">${escapeHTML(o.from)} → ${escapeHTML(o.to)}｜${formatDate(o.time)}｜${escapeHTML(o.size)}${driver ? "｜" + escapeHTML(driver.name) : ""}</div>
     </div>
   </div>`;
@@ -926,7 +976,8 @@ function renderOrders() {
     list.forEach(o => { if (!byShip.has(o.ship)) byShip.set(o.ship, []); byShip.get(o.ship).push(o); });
 
     box.innerHTML = [...byShip.entries()].map(([ship, items]) => {
-      const carrierNames = [...new Set(items.map(i => i.carrier).filter(Boolean))].join("、") || "未指定船公司";
+      const carrierNames = [...new Set(items.map(i => i.carrier).filter(Boolean))].join("、") || "未指定船商";
+      const shipCalls = [...new Set(items.map(i => i.shipCall).filter(c => c && ship !== `船掛 ${c}`))].join("、");
       const groups = TYPE_ORDER.map(t => {
         const its = items.filter(i => i.dispatchType === t);
         if (!its.length) return "";
@@ -934,7 +985,7 @@ function renderOrders() {
       }).join("");
       return `<details class="ship-group" data-ship="${escapeHTML(ship)}" ${collapsedShips.has(ship) ? "" : "open"}>
         <summary><input type="checkbox" class="pick ship-pick" aria-label="勾選整艘船" onclick="event.stopPropagation()" onchange="toggleShipPick(this)">
-          <span>🚢 ${escapeHTML(ship)} <span class="muted">・${escapeHTML(carrierNames)}・${items.length} 筆</span></span></summary>${groups}</details>`;
+          <span>🚢 ${escapeHTML(ship)} <span class="muted">・${escapeHTML(carrierNames)}${shipCalls ? `・船掛 ${escapeHTML(shipCalls)}` : ""}・${items.length} 筆</span></span></summary>${groups}</details>`;
     }).join("");
 
     box.querySelectorAll("details").forEach(d => {
@@ -986,7 +1037,8 @@ function buildDispatchText(list) {
   let n = 0;
   for (const [ship, items] of byShip) {
     const carrierNames = [...new Set(items.map(i => i.carrier).filter(Boolean))].join("、");
-    lines.push("", `🚢 ${ship}${carrierNames ? `(${carrierNames})` : ""}`);
+    const shipCalls = [...new Set(items.map(i => i.shipCall).filter(c => c && ship !== `船掛 ${c}`))].join("、");
+    lines.push("", `🚢 ${ship}${carrierNames ? `(${carrierNames})` : ""}${shipCalls ? `・船掛 ${shipCalls}` : ""}`);
     for (const t of TYPE_ORDER) {
       const its = items.filter(i => i.dispatchType === t).sort((a, b) => String(a.time).localeCompare(String(b.time)));
       if (!its.length) continue;
@@ -996,7 +1048,7 @@ function buildDispatchText(list) {
         const vehicle = vehicles.find(v => v.id === o.vehicleId);
         n++;
         lines.push(
-          `${n}. ${o.container}　${o.size}`,
+          `${n}. ${containerText(o)}　${o.size}`,
           `   ${o.from} → ${o.to}`,
           `   ${shortTime(o.time)}`,
           driver || vehicle
@@ -1077,12 +1129,13 @@ function renderOrderDetail() {
   }
 
   box.innerHTML = `
-    <h3 style="margin-bottom:4px">${escapeHTML(o.container)}</h3>
+    <h3 style="margin-bottom:4px">${escapeHTML(containerText(o))}</h3>
     <div>${typeTag(o.dispatchType)} ${statusBadge(o.status)}</div>
     <div class="hint">${TYPE_INFO[o.dispatchType] || ""}</div>
     <dl class="detail-grid">
       <dt>訂單編號</dt><dd>${escapeHTML(o.id)}</dd>
-      <dt>船公司</dt><dd>${escapeHTML(o.carrier || "-")}</dd>
+      <dt>船商</dt><dd>${escapeHTML(o.carrier || "-")}</dd>
+      <dt>船掛</dt><dd>${escapeHTML(o.shipCall || "-")}</dd>
       <dt>船名／航次</dt><dd>${escapeHTML(o.ship)}</dd>
       <dt>貨櫃尺寸</dt><dd>${escapeHTML(o.size)}</dd>
       <dt>起點 → 終點</dt><dd>${escapeHTML(o.from)} → ${escapeHTML(o.to)}</dd>
@@ -1197,13 +1250,11 @@ function applySettings() {
   const carrierNames = [...new Set([...settings.carriers, ...orders.map(o => o.carrier).filter(Boolean)])];
   const filterSel = document.getElementById("carrierFilter");
   const keep = filterSel.value;
-  filterSel.innerHTML = `<option value="">全部船公司</option>` + carrierNames.map(c => `<option>${escapeHTML(c)}</option>`).join("");
+  filterSel.innerHTML = `<option value="">全部船商</option>` + carrierNames.map(c => `<option>${escapeHTML(c)}</option>`).join("");
   filterSel.value = keep;
 
-  const carrierSel = document.getElementById("orderCarrier");
-  const keepCarrier = carrierSel.value;
-  carrierSel.innerHTML = settings.carriers.map(c => `<option>${escapeHTML(c)}</option>`).join("");
-  if (keepCarrier) carrierSel.value = keepCarrier;
+  // 船商是自行輸入;清單(後台設定 + 已出現過的船商)只是輸入時的建議
+  document.getElementById("carrierList").innerHTML = carrierNames.map(c => `<option value="${escapeHTML(c)}"></option>`).join("");
 
   if (isAdmin() && document.activeElement?.closest?.("#subSettings") == null) {
     document.getElementById("setName").value = settings.systemName;
@@ -1287,7 +1338,7 @@ function parseCSV(text) {
 }
 
 function downloadTemplate() {
-  const csv = "\ufeff船公司,調派類型,船名航次,貨櫃編號,起點,終點,作業時間,尺寸\n夏輝,CY,EVER ACE / 012W,EMCU1234567,高雄港,台中倉庫,2026-10-01 09:00,40 呎\n";
+  const csv = "\ufeff船掛,船商,調派類型,船名航次,貨櫃編號,起點,終點,作業時間,尺寸\n152667,愛媛,CY,EVER ACE / 012W,EMCU1234567,高雄港,台中倉庫,2026-10-01 09:00,40 呎\n";
   const link = document.createElement("a");
   link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   link.download = "訂單匯入範本.csv";
@@ -1302,9 +1353,10 @@ async function importOrders() {
   const table = parseCSV(await file.text());
   if (table.length < 2) { out.innerHTML = `<div class="alert">檔案沒有資料列</div>`; return; }
 
-  const map = { "船公司": "carrier", "船運公司": "carrier", "調派類型": "dispatchType", "類型": "dispatchType", "船名航次": "ship", "船名／航次": "ship", "貨櫃編號": "container", "起點": "from", "終點": "to", "作業時間": "time", "尺寸": "size", "貨櫃尺寸": "size" };
+  const map = { "船掛": "shipCall", "船掛號": "shipCall", "船商": "carrier", "船公司": "carrier", "船運公司": "carrier", "調派類型": "dispatchType", "類型": "dispatchType", "船名航次": "ship", "船名／航次": "ship", "貨櫃編號": "container", "起點": "from", "終點": "to", "作業時間": "time", "尺寸": "size", "貨櫃尺寸": "size" };
   const cols = table[0].map(h => map[h.trim()]);
-  const missing = ["carrier", "dispatchType", "ship", "container", "from", "to", "time", "size"].filter(k => !cols.includes(k));
+  const missing = ["carrier", "dispatchType", "container", "from", "to", "time", "size"].filter(k => !cols.includes(k));
+  if (!cols.includes("ship") && !cols.includes("shipCall")) missing.push("ship");
   if (missing.length) { out.innerHTML = `<div class="alert">缺少欄位,請確認表頭與範本一致</div>`; return; }
 
   const rows = table.slice(1).map(r => {
@@ -1335,13 +1387,48 @@ async function importOrders() {
 function openStatusModal(orderId) {
   const order = orders.find(o => o.id === orderId);
   document.getElementById("statusOrderId").value = orderId;
-  document.getElementById("statusInfo").textContent = `${order.id}｜${order.container}｜目前狀態:${order.status}`;
+  document.getElementById("statusInfo").textContent = `${order.id}｜${containerText(order)}｜目前狀態:${order.status}`;
   document.getElementById("statusValue").value = order.status;
   document.getElementById("statusModal").classList.remove("hidden");
 }
 
 function updateTypeHint() {
   document.getElementById("typeHint").textContent = TYPE_INFO[document.getElementById("orderType").value] || "";
+}
+
+function containerText(o) { return o.container ? o.container : "(待補櫃號)"; }
+
+function defaultOrderTime() {
+  const d = new Date();
+  return `${localToday()}T${pad(d.getHours())}:00`;
+}
+
+const orderQtyValue = id => {
+  const n = Number(document.getElementById(id).value || 0);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+};
+
+// 車數表格即時加總;有填車數 = 依車數一次建立多筆,沒填 = 單筆貨櫃訂單;編輯既有訂單一律是單筆
+function refreshOrderQtyUI() {
+  const editing = !!document.getElementById("orderEditId").value;
+  const q20 = orderQtyValue("orderQty20"), q40 = orderQtyValue("orderQty40"), qHQ = orderQtyValue("orderQtyHQ");
+  const total = q20 + q40 + qHQ;
+  const totalEl = document.getElementById("orderQtyTotal");
+  totalEl.textContent = total;
+  totalEl.classList.toggle("over", total > 200);
+
+  document.getElementById("orderQtyBlock").classList.toggle("hidden", editing);
+  const single = editing || total === 0;
+  document.getElementById("orderSingleBlock").classList.toggle("hidden", !single);
+  document.getElementById("orderContainer").required = single;
+
+  document.getElementById("orderQtyHint").textContent =
+    total > 200 ? "一次最多建立 200 台車"
+    : total > 0 ? `將一次建立 ${total} 筆訂單(20×${q20}、40×${q40}、HQ×${qHQ}),貨櫃編號之後再到訂單裡補`
+    : "三種尺寸都不填 = 建立單筆貨櫃訂單(請在下方填貨櫃編號)";
+  if (!editing) {
+    document.getElementById("orderSubmitBtn").textContent = total > 0 ? `建立 ${total} 筆訂單` : "建立訂單";
+  }
 }
 
 function openOrderModal(orderId) {
@@ -1351,19 +1438,17 @@ function openOrderModal(orderId) {
   document.getElementById("orderModalTitle").textContent = order ? "編輯訂單" : "新增運輸訂單";
   document.getElementById("orderSubmitBtn").textContent = order ? "儲存變更" : "建立訂單";
 
-  const carrierSel = document.getElementById("orderCarrier");
-  const wantedCarrier = order?.carrier || carrierSel.options[0]?.value || "";
-  if (wantedCarrier && ![...carrierSel.options].some(o => o.value === wantedCarrier)) {
-    carrierSel.add(new Option(wantedCarrier + "(未在清單)", wantedCarrier));
-  }
-  carrierSel.value = wantedCarrier;
+  document.getElementById("orderShipCall").value = order?.shipCall || "";
+  document.getElementById("orderCarrier").value = order?.carrier || "";
   document.getElementById("orderType").value = order?.dispatchType || typeFilter || "船邊";
   updateTypeHint();
-  document.getElementById("orderShip").value = order?.ship || "";
+  // 船掛代替船名時,編輯畫面不要把「船掛 xxx」當成使用者輸入的船名
+  document.getElementById("orderShip").value = order && order.ship !== `船掛 ${order.shipCall}` ? order.ship : "";
   document.getElementById("orderContainer").value = order?.container || "";
   document.getElementById("orderFrom").value = order?.from || "";
   document.getElementById("orderTo").value = order?.to || "";
-  document.getElementById("orderTime").value = order?.time || "";
+  document.getElementById("orderTime").value = order?.time || defaultOrderTime();
+  for (const id of ["orderQty20", "orderQty40", "orderQtyHQ"]) document.getElementById(id).value = "";
   const sizeSelect = document.getElementById("orderSize");
   const wantedSize = order?.size || settings.containerSizes[0];
   if (![...sizeSelect.options].some(o => o.value === wantedSize)) {
@@ -1371,7 +1456,67 @@ function openOrderModal(orderId) {
   }
   sizeSelect.value = wantedSize;
 
+  refreshOrderQtyUI();
   document.getElementById("orderModal").classList.remove("hidden");
+}
+
+// ----- 總數車數統計 -----
+let taskStatsData = { groups: [], totals: {} };
+
+async function loadTaskStats() {
+  const dateEl = document.getElementById("taskStatsDate");
+  if (!dateEl.value) dateEl.value = localToday();
+  const all = document.getElementById("taskStatsAll").checked;
+  try {
+    taskStatsData = await api("/api/orders/task-summary" + (all ? "" : `?date=${encodeURIComponent(dateEl.value)}`));
+    renderTaskStats();
+  } catch (err) {
+    document.getElementById("taskStatsTable").innerHTML = `<div class="alert">${escapeHTML(err.message)}</div>`;
+  }
+}
+
+function shiftTaskStatsDate(delta) {
+  const el = document.getElementById("taskStatsDate");
+  const d = new Date((el.value || localToday()) + "T00:00:00");
+  d.setDate(d.getDate() + delta);
+  el.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  document.getElementById("taskStatsAll").checked = false;
+  loadTaskStats();
+}
+
+function renderTaskStats() {
+  const { groups, totals } = taskStatsData;
+  const box = document.getElementById("taskStatsTable");
+  if (!groups.length) { box.innerHTML = `<div class="empty">這個日期還沒有訂單任務</div>`; return; }
+
+  const showOther = totals.other > 0; // 只有出現 20/40/HQ 以外的尺寸(例如 45 呎)才顯示這一欄
+  const num = v => v ? v : `<span class="stat-zero">·</span>`;
+  box.innerHTML = `
+  <table>
+    <thead><tr><th>船掛</th><th>船商</th><th>船名／航次</th><th class="stat-num">20</th><th class="stat-num">40</th><th class="stat-num">HQ</th>${showOther ? '<th class="stat-num">其他</th>' : ""}<th class="stat-num">總計車數</th><th class="stat-num">待派車</th></tr></thead>
+    <tbody>
+      ${groups.map((g, i) => `
+      <tr class="stats-row" onclick="filterOrdersByGroup(${i})">
+        <td>${escapeHTML(g.shipCall || "-")}</td><td>${escapeHTML(g.carrier || "-")}</td><td>${escapeHTML(g.ship)}</td>
+        <td class="stat-num">${num(g.n20)}</td><td class="stat-num">${num(g.n40)}</td><td class="stat-num">${num(g.nHQ)}</td>${showOther ? `<td class="stat-num">${num(g.other)}</td>` : ""}
+        <td class="stat-num"><b>${g.total}</b></td>
+        <td class="stat-num">${g.pending ? `<span class="badge yellow">${g.pending}</span>` : `<span class="badge green">0</span>`}</td>
+      </tr>`).join("")}
+      <tr class="stats-total">
+        <td colspan="3">合計</td>
+        <td class="stat-num">${totals.n20}</td><td class="stat-num">${totals.n40}</td><td class="stat-num">${totals.nHQ}</td>${showOther ? `<td class="stat-num">${totals.other}</td>` : ""}
+        <td class="stat-num">${totals.total}</td><td class="stat-num">${totals.pending}</td>
+      </tr>
+    </tbody>
+  </table>`;
+}
+
+function filterOrdersByGroup(index) {
+  const g = taskStatsData.groups[index];
+  if (!g) return;
+  document.getElementById("orderSearch").value = g.shipCall || g.ship;
+  renderOrders();
+  document.querySelector(".list-pane").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function openDriverModal(driverId) {
@@ -2347,30 +2492,42 @@ document.getElementById("orderForm").addEventListener("submit", async e => {
   const errorBox = document.getElementById("orderModalError");
   errorBox.classList.add("hidden");
   const editId = document.getElementById("orderEditId").value;
+  const val = id => document.getElementById(id).value;
+  const fail = msg => { errorBox.textContent = msg; errorBox.classList.remove("hidden"); };
 
-  const payload = {
-    ship: document.getElementById("orderShip").value,
-    container: document.getElementById("orderContainer").value,
-    from: document.getElementById("orderFrom").value,
-    to: document.getElementById("orderTo").value,
-    time: document.getElementById("orderTime").value,
-    size: document.getElementById("orderSize").value,
-    dispatchType: document.getElementById("orderType").value,
-    carrier: document.getElementById("orderCarrier").value,
+  const base = {
+    shipCall: val("orderShipCall").trim(),
+    carrier: val("orderCarrier").trim(),
+    ship: val("orderShip").trim(),
+    from: val("orderFrom"),
+    to: val("orderTo"),
+    time: val("orderTime"),
+    dispatchType: val("orderType"),
   };
+  if (!base.ship && !base.shipCall) { fail("請填船掛或船名／航次"); return; }
+  if (!base.carrier) { fail("請填船商"); return; }
+
+  const qty = { qty20: orderQtyValue("orderQty20"), qty40: orderQtyValue("orderQty40"), qtyHQ: orderQtyValue("orderQtyHQ") };
+  const total = qty.qty20 + qty.qty40 + qty.qtyHQ;
+  const container = val("orderContainer").trim();
 
   try {
+    let notice = "";
     if (editId) {
-      await api(`/api/orders/${editId}`, { method: "PATCH", body: JSON.stringify(payload) });
+      await api(`/api/orders/${editId}`, { method: "PATCH", body: JSON.stringify({ ...base, container, size: val("orderSize") }) });
+    } else if (total > 0) {
+      const r = await api("/api/orders/task", { method: "POST", body: JSON.stringify({ ...base, ...qty }) });
+      notice = `已建立 ${r.created} 筆訂單(20×${r.counts["20"]}、40×${r.counts["40"]}、HQ×${r.counts.HQ})。貨櫃編號可之後到訂單裡補。`;
     } else {
-      await api("/api/orders", { method: "POST", body: JSON.stringify(payload) });
+      if (!container) { fail("請填貨櫃編號,或在車數表格填入車數"); return; }
+      await api("/api/orders", { method: "POST", body: JSON.stringify({ ...base, container, size: val("orderSize") }) });
     }
     await loadAll();
     e.target.reset();
     closeModal("orderModal");
+    if (notice) alert(notice);
   } catch (err) {
-    errorBox.textContent = err.message;
-    errorBox.classList.remove("hidden");
+    fail(err.message);
   }
 });
 

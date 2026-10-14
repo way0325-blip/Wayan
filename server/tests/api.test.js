@@ -266,7 +266,12 @@ test("dispatch type (CY / 船邊) and carrier are required, validated, editable 
 
   assert.strictEqual((await call("POST", "/api/orders", ops, { ...order, carrier: "陽明" })).status, 400);
   assert.strictEqual((await call("POST", "/api/orders", ops, { ...order, dispatchType: "碼頭", carrier: "陽明" })).status, 400);
-  assert.strictEqual((await call("POST", "/api/orders", ops, { ...order, dispatchType: "CY", carrier: "不存在的船公司" })).status, 400);
+  // 船商是自行輸入的自由文字,後台清單只是輸入時的建議,不在清單內也要能建立
+  const freeText = await call("POST", "/api/orders", ops, { ...order, container: "FREE0001", dispatchType: "CY", carrier: "愛媛" });
+  assert.strictEqual(freeText.status, 201);
+  assert.strictEqual(freeText.data.carrier, "愛媛");
+  assert.strictEqual((await call("POST", "/api/orders", ops, { ...order, dispatchType: "CY", carrier: "   " })).status, 400, "只有空白不算有填");
+  assert.strictEqual((await call("POST", "/api/orders", ops, { ...order, dispatchType: "CY", carrier: "x".repeat(31) })).status, 400);
 
   const created = await call("POST", "/api/orders", ops, { ...order, dispatchType: "船邊", carrier: "天鵝湖" });
   assert.strictEqual(created.status, 201);
@@ -278,7 +283,7 @@ test("dispatch type (CY / 船邊) and carrier are required, validated, editable 
   assert.strictEqual(edited.data.carrier, "夏輝");
   assert.strictEqual((await call("PATCH", `/api/orders/${created.data.id}`, ops, { dispatchType: "亂寫" })).status, 400);
 
-  // 船公司可在後台新增,新增後才可使用
+  // 後台的船商清單只是輸入建議,仍可維護
   assert.strictEqual((await call("PUT", "/api/settings", ops, { carriers: ["X"] })).status, 403);
   assert.strictEqual((await call("PUT", "/api/settings", admin, { carriers: [] })).status, 400);
   const put = await call("PUT", "/api/settings", admin, { carriers: ["夏輝", "陽明", "天鵝湖", "新船公司"] });
@@ -287,7 +292,10 @@ test("dispatch type (CY / 船邊) and carrier are required, validated, editable 
 
   const bad = await call("POST", "/api/orders/import", ops, { rows: [{ ...order, dispatchType: "X", carrier: "Y" }] });
   assert.strictEqual(bad.status, 400);
-  assert.ok(bad.data.details[0].problems.length >= 2);
+  assert.ok(bad.data.details[0].problems.some((p) => p.includes("調派類型")));
+  const blankCarrier = await call("POST", "/api/orders/import", ops, { rows: [{ ...order, dispatchType: "CY", carrier: " " }] });
+  assert.strictEqual(blankCarrier.status, 400);
+  assert.ok(blankCarrier.data.details[0].problems.some((p) => p.includes("船商")));
 });
 
 test("csv export neutralises formula injection", async () => {
@@ -296,7 +304,7 @@ test("csv export neutralises formula injection", async () => {
   const r = await fetch(`${base}/api/orders/export/csv`, { headers: admin });
   const text = await r.text();
   assert.ok(text.includes(`"'=HYPERLINK`));
-  assert.ok(text.split("\n")[0].includes("船公司") && text.split("\n")[0].includes("調派類型"));
+  assert.ok(text.split("\n")[0].includes("船商") && text.split("\n")[0].includes("調派類型") && text.split("\n")[0].includes("船掛"));
 });
 
 test("dispatch expiry is inclusive: valid through the expiry day (Taipei), rejected the day after", async () => {

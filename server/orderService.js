@@ -4,6 +4,7 @@ function serializeOrder(row) {
   return {
     id: row.id,
     ship: row.ship,
+    shipCall: row.ship_call,
     container: row.container,
     from: row.from_location,
     to: row.to_location,

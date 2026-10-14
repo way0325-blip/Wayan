@@ -54,9 +54,19 @@ function isPastDate(dateStr, now = new Date()) {
   return d !== null && d < 0;
 }
 
+// 只接受真的存在的 YYYY-MM-DD(2026-02-31 這種會被擋掉)
+function isValidDateKey(value) {
+  if (typeof value !== "string") return false;
+  const parts = parseKey(value);
+  if (!parts) return false;
+  const [y, m, d] = parts;
+  const t = new Date(Date.UTC(y, m - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
+}
+
 function weekdayOf(key) {
   const [y, m, d] = parseKey(key);
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 = 日
 }
 
-module.exports = { TIME_ZONE, todayInTaipei, toDateKey, addDays, daysBetween, daysUntil, isPastDate, weekdayOf };
+module.exports = { TIME_ZONE, todayInTaipei, toDateKey, addDays, daysBetween, daysUntil, isPastDate, isValidDateKey, weekdayOf };

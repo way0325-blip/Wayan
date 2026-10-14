@@ -52,6 +52,7 @@ async function initSchema() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS dispatch_type TEXT NOT NULL DEFAULT 'CY';
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS carrier TEXT NOT NULL DEFAULT '';
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS ship_call TEXT NOT NULL DEFAULT '';
     ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS inspection_date TEXT;
 
     CREATE TABLE IF NOT EXISTS vehicle_maintenance_items (
@@ -160,7 +161,7 @@ async function seedSettings() {
     system_name: "港區星際運輸調度中心",
     announcement: "",
     locations: JSON.stringify(["高雄港", "台中港", "基隆港", "台北港", "台中倉庫", "台南倉庫", "屏東物流中心"]),
-    container_sizes: JSON.stringify(["20 呎", "40 呎", "45 呎"]),
+    container_sizes: JSON.stringify(["20 呎", "40 呎", "40HQ", "45 呎"]),
     carriers: JSON.stringify(["夏輝", "陽明", "天鵝湖"]),
     line_group_ids: JSON.stringify([]),
     shopee_vehicle_types: JSON.stringify(["3.5T", "11T", "17T"]),
@@ -226,9 +227,25 @@ async function seedIfEmpty() {
   }
 }
 
+// 一次性遷移:既有資料庫的貨櫃尺寸清單沒有 HQ 時補上「40HQ」。
+// 用 settings 裡的標記記住已經做過,之後管理員若自己把它拿掉,不會在重啟時被加回來。
+async function ensureHqContainerSize() {
+  const done = await pool.query("SELECT 1 FROM settings WHERE key = 'migration_hq_size'");
+  if (done.rows.length) return;
+  const { rows } = await pool.query("SELECT value FROM settings WHERE key = 'container_sizes'");
+  let sizes = [];
+  try { sizes = JSON.parse(rows[0]?.value || "[]"); } catch { sizes = []; }
+  if (rows.length && !sizes.some((s) => /hq/i.test(s))) {
+    sizes.push("40HQ");
+    await pool.query("UPDATE settings SET value = $1 WHERE key = 'container_sizes'", [JSON.stringify(sizes)]);
+  }
+  await pool.query("INSERT INTO settings (key, value) VALUES ('migration_hq_size', '1') ON CONFLICT (key) DO NOTHING");
+}
+
 async function initDb() {
   await initSchema();
   await seedSettings();
+  await ensureHqContainerSize();
   await seedIfEmpty();
 }
 
