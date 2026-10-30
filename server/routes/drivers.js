@@ -79,6 +79,14 @@ router.delete("/:id", requireRole("admin"), async (req, res, next) => {
       return res.status(409).json({ error: "此司機仍有進行中的訂單,無法刪除" });
     }
 
+    const hasPerformanceHistory = await pool.query(
+      "SELECT 1 FROM driver_performance_events WHERE driver_id = $1 LIMIT 1",
+      [req.params.id]
+    );
+    if (hasPerformanceHistory.rows.length) {
+      return res.status(409).json({ error: "此司機已有績效事件紀錄，為保留歷史資料不可刪除；請將司機狀態改為停派。" });
+    }
+
     const result = await pool.query("DELETE FROM drivers WHERE id = $1", [req.params.id]);
     if (result.rowCount === 0) return res.status(404).json({ error: "找不到此司機" });
 

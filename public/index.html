@@ -285,6 +285,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
     <button class="nav-btn" data-page="orders">📦 訂單與車趟</button>
     <button class="nav-btn" data-page="shopee">🟢 蝦皮車隊需求</button>
     <button class="nav-btn" data-page="drivers">👨‍✈️ 司機管理</button>
+    <button class="nav-btn" data-page="driver-performance">📈 司機績效</button>
     <button class="nav-btn" data-page="vehicles">🚚 車輛管理</button>
     <button class="nav-btn" data-page="schedule">📅 班表</button>
     <button class="nav-btn admin-only hidden" data-page="users">⚙️ 後台管理</button>
@@ -386,6 +387,54 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
           <button class="action" onclick="openDriverModal()">＋ 新增司機</button>
         </div>
         <div id="driversTable" class="table-wrap"></div>
+      </div>
+    </section>
+
+    <section id="driver-performance" class="page">
+      <div class="panel">
+        <div class="toolbar">
+          <label style="align-self:center">統計區間</label>
+          <select id="driverPerformancePeriod" style="max-width:140px"><option value="month">月</option><option value="quarter">季</option><option value="year">年度</option></select>
+          <input id="driverPerformanceMonth" type="month" style="max-width:190px">
+          <button class="action secondary" onclick="loadDriverPerformance()">查詢</button>
+        </div>
+        <div class="cards" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+          <div class="card"><div class="card-title">本月遲到次數</div><div id="dpLateCount" class="card-value yellow">0</div></div>
+          <div class="card"><div class="card-title">累計遲到分鐘</div><div id="dpLateMinutes" class="card-value cyan">0</div></div>
+          <div class="card"><div class="card-title">已確認點數</div><div id="dpPoints" class="card-value red">0</div></div>
+          <div class="card"><div class="card-title">待主管覆核</div><div id="dpPending" class="card-value yellow">0</div></div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:18px">
+        <h3>新增司機事件</h3>
+        <div class="notice">事件新增後先列為「待覆核」。遲到點數依分鐘自動計算，只有主管確認後才納入累積；核准排除或非司機因素不計點。</div>
+        <form id="driverPerformanceForm">
+          <div class="form-grid">
+            <div class="field"><label>司機</label><select id="dpDriver" required></select></div>
+            <div class="field"><label>事件類型</label><select id="dpEventType" required>
+              <option value="遲到">遲到</option><option value="早退">早退</option><option value="無故缺勤">無故缺勤</option>
+              <option value="未依規定通報">未依規定通報</option><option value="任務延誤">任務延誤</option>
+              <option value="漏送">漏送</option><option value="錯送">錯送</option><option value="貨損">貨損</option>
+              <option value="交通違規">交通違規</option><option value="交通事故">交通事故</option>
+              <option value="車輛管理">車輛管理</option><option value="其他">其他</option>
+            </select></div>
+            <div class="field"><label>事件日期</label><input id="dpEventDate" type="date" required></div>
+            <div class="field"><label>原因/情況</label><input id="dpReason" maxlength="300" placeholder="例如：交通壅塞、未依規定通報"></div>
+            <div class="field dp-time-field"><label>預定時間（遲到必填）</label><input id="dpScheduledTime" type="time" required></div>
+            <div class="field dp-time-field"><label>實際時間（遲到必填）</label><input id="dpActualTime" type="time" required></div>
+            <div class="field full"><label>事件說明</label><textarea id="dpNote" maxlength="2000" placeholder="記錄事件經過、司機說明及相關狀況"></textarea></div>
+          </div>
+          <button class="action" type="submit">儲存事件紀錄</button>
+          <span id="dpFormMessage" class="hint"></span>
+        </form>
+      </div>
+      <div class="panel" style="margin-top:18px">
+        <h3>司機月度統計</h3>
+        <div id="driverPerformanceSummary" class="table-wrap"></div>
+      </div>
+      <div class="panel" style="margin-top:18px">
+        <h3>事件紀錄與主管覆核</h3>
+        <div id="driverPerformanceEvents" class="table-wrap"></div>
       </div>
     </section>
 
@@ -806,6 +855,7 @@ todayEl.textContent = new Date().toLocaleDateString("zh-TW", {
   year: "numeric", month: "long", day: "numeric", weekday: "long"
 });
 
+let driverPerformanceData = { month: "", summary: [], events: [] };
 let drivers = [];
 let vehicles = [];
 let orders = [];
@@ -1144,6 +1194,80 @@ function renderOrderDetail() {
       <dt>車輛</dt><dd>${vehicle ? escapeHTML(vehicle.plate) : "-"}</dd>
     </dl>
     <div class="btn-row">${actions.join("") || "<span class='hint'>此訂單已完成,沒有可執行的操作</span>"}</div>`;
+}
+
+function currentMonthValue() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+async function loadDriverPerformance() {
+  const monthInput = document.getElementById("driverPerformanceMonth");
+  if (!monthInput.value) monthInput.value = currentMonthValue();
+  const month = monthInput.value;
+  try {
+    const period = document.getElementById("driverPerformancePeriod").value;
+    const data = await api(`/api/driver-performance?period=${encodeURIComponent(period)}&month=${encodeURIComponent(month)}`);
+    driverPerformanceData = data;
+    const select = document.getElementById("dpDriver");
+    const selected = select.value;
+    select.innerHTML = drivers.map(d => `<option value="${escapeHTML(d.id)}">${escapeHTML(d.id)}｜${escapeHTML(d.name)}</option>`).join("");
+    if (drivers.some(d => d.id === selected)) select.value = selected;
+    document.getElementById("dpEventDate").value ||= localToday();
+    renderDriverPerformance();
+  } catch (err) {
+    document.getElementById("driverPerformanceSummary").innerHTML = `<div class="alert">${escapeHTML(err.message)}</div>`;
+  }
+}
+
+function renderDriverPerformance() {
+  const summary = driverPerformanceData.summary || [];
+  const events = driverPerformanceData.events || [];
+  const totals = summary.reduce((a, r) => ({
+    late: a.late + Number(r.late_count || 0),
+    minutes: a.minutes + Number(r.late_minutes || 0),
+    points: a.points + Number(r.confirmed_points || 0),
+    pending: a.pending + Number(r.pending_count || 0),
+  }), { late: 0, minutes: 0, points: 0, pending: 0 });
+  document.getElementById("dpLateCount").textContent = totals.late;
+  document.getElementById("dpLateMinutes").textContent = totals.minutes;
+  document.getElementById("dpPoints").textContent = totals.points;
+  document.getElementById("dpPending").textContent = totals.pending;
+
+  document.getElementById("driverPerformanceSummary").innerHTML = summary.length ? `
+    <table><thead><tr><th>司機編號</th><th>姓名</th><th>遲到次數</th><th>遲到總分鐘</th><th>已確認點數</th><th>待覆核</th><th>排除事件</th><th>事件總數</th></tr></thead>
+    <tbody>${summary.map(r => `<tr><td>${escapeHTML(r.driver_id)}</td><td>${escapeHTML(r.name)}</td><td>${r.late_count}</td><td>${r.late_minutes}</td><td><strong>${r.confirmed_points}</strong></td><td>${r.pending_count}</td><td>${r.excluded_count}</td><td>${r.total_events}</td></tr>`).join("")}</tbody></table>`
+    : '<div class="empty">目前沒有司機資料</div>';
+
+  const reviewLabel = (status) => status === "已確認" ? '<span class="badge green">已確認</span>' :
+    status === "待覆核" ? '<span class="badge yellow">待覆核</span>' :
+    '<span class="badge">已排除/非司機因素</span>';
+  document.getElementById("driverPerformanceEvents").innerHTML = events.length ? `
+    <table><thead><tr><th>日期</th><th>司機</th><th>類型</th><th>預定/實際</th><th>遲到分鐘</th><th>點數</th><th>原因/說明</th><th>覆核狀態</th><th>操作</th></tr></thead>
+    <tbody>${events.map(e => `<tr>
+      <td>${escapeHTML(String(e.event_date).slice(0,10))}</td><td>${escapeHTML(e.driver_name)}<br><span class="hint">${escapeHTML(e.driver_id)}</span></td>
+      <td>${escapeHTML(e.event_type)}</td><td>${escapeHTML((e.scheduled_time || "-").slice(0,5))} / ${escapeHTML((e.actual_time || "-").slice(0,5))}</td>
+      <td>${e.late_minutes}</td><td>${e.points}</td><td title="${escapeHTML(e.note)}">${escapeHTML(e.reason || e.note || "-")}</td>
+      <td>${reviewLabel(e.review_status)}</td>
+      <td>${isAdmin() && e.review_status === "待覆核" ? `<div class="btn-row">
+        <button class="action small" onclick="reviewDriverEvent(${e.id}, '已確認')">確認</button>
+        <button class="action secondary small" onclick="reviewDriverEvent(${e.id}, '核准排除')">排除</button>
+        <button class="action secondary small" onclick="reviewDriverEvent(${e.id}, '非司機因素')">非司機因素</button>
+      </div>` : "-"}</td>
+    </tr>`).join("")}</tbody></table>`
+    : '<div class="empty">本月尚無事件紀錄</div>';
+}
+
+async function reviewDriverEvent(id, status) {
+  const reviewNote = status === "核准排除" || status === "非司機因素"
+    ? prompt("請填寫覆核原因：") : (prompt("覆核備註（可留白）：") || "");
+  if ((status === "核准排除" || status === "非司機因素") && !String(reviewNote || "").trim()) return;
+  try {
+    await api(`/api/driver-performance/events/${id}/review`, {
+      method: "PATCH", body: JSON.stringify({ status, reviewNote: reviewNote || "" })
+    });
+    await loadDriverPerformance();
+  } catch (err) { alert(err.message); }
 }
 
 function renderDrivers() {
@@ -2439,11 +2563,13 @@ document.querySelectorAll(".nav-btn[data-page]").forEach(button => {
       drivers: "司機資料管理",
       vehicles: "車輛資料管理",
       schedule: "班表",
+      "driver-performance": "自有司機績效評估",
       shopee: "蝦皮店到店・車隊需求",
       users: "後台管理",
     };
     document.getElementById("pageTitle").textContent = titles[button.dataset.page];
     if (button.dataset.page === "schedule") loadSchedule();
+    if (button.dataset.page === "driver-performance") loadDriverPerformance();
     if (button.dataset.page === "shopee") loadShopee();
   });
 });
@@ -2549,6 +2675,35 @@ document.getElementById("dispatchForm").addEventListener("submit", async e => {
   } catch (err) {
     alert("操作失敗：\n\n・" + err.message);
   }
+});
+
+document.getElementById("dpEventType").addEventListener("change", () => {
+  const isLate = document.getElementById("dpEventType").value === "遲到";
+  document.getElementById("dpScheduledTime").required = isLate;
+  document.getElementById("dpActualTime").required = isLate;
+});
+
+document.getElementById("driverPerformanceForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const message = document.getElementById("dpFormMessage");
+  message.textContent = "";
+  const payload = {
+    driverId: document.getElementById("dpDriver").value,
+    eventType: document.getElementById("dpEventType").value,
+    eventDate: document.getElementById("dpEventDate").value,
+    scheduledTime: document.getElementById("dpScheduledTime").value,
+    actualTime: document.getElementById("dpActualTime").value,
+    reason: document.getElementById("dpReason").value,
+    note: document.getElementById("dpNote").value,
+  };
+  try {
+    await api("/api/driver-performance/events", { method: "POST", body: JSON.stringify(payload) });
+    e.target.reset();
+    document.getElementById("dpEventDate").value = localToday();
+    document.getElementById("dpEventType").dispatchEvent(new Event("change"));
+    message.textContent = "事件已儲存，等待主管覆核。";
+    await loadDriverPerformance();
+  } catch (err) { message.textContent = err.message; }
 });
 
 document.getElementById("driverForm").addEventListener("submit", async e => {

@@ -130,6 +130,43 @@ async function initSchema() {
       UNIQUE (staff_type, staff_id, date)
     );
 
+    -- 自有司機績效事件：原始事件不可刪除，覆核歷程獨立保存。
+    CREATE TABLE IF NOT EXISTS driver_performance_events (
+      id BIGSERIAL PRIMARY KEY,
+      driver_id TEXT NOT NULL REFERENCES drivers(id) ON DELETE RESTRICT,
+      event_type TEXT NOT NULL,
+      event_date DATE NOT NULL,
+      scheduled_time TIME,
+      actual_time TIME,
+      late_minutes INTEGER NOT NULL DEFAULT 0 CHECK (late_minutes >= 0),
+      points INTEGER NOT NULL DEFAULT 0 CHECK (points >= 0),
+      reason TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '',
+      excluded_reason TEXT NOT NULL DEFAULT '',
+      review_status TEXT NOT NULL DEFAULT '待覆核'
+        CHECK (review_status IN ('待覆核', '已確認', '核准排除', '非司機因素')),
+      review_note TEXT NOT NULL DEFAULT '',
+      created_by TEXT NOT NULL,
+      reviewed_by TEXT,
+      reviewed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_driver_perf_events_driver_date
+      ON driver_performance_events (driver_id, event_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_driver_perf_events_date_status
+      ON driver_performance_events (event_date, review_status);
+
+    CREATE TABLE IF NOT EXISTS driver_performance_event_history (
+      id BIGSERIAL PRIMARY KEY,
+      event_id BIGINT NOT NULL REFERENCES driver_performance_events(id) ON DELETE RESTRICT,
+      action TEXT NOT NULL,
+      before_data JSONB,
+      after_data JSONB,
+      actor TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS line_daily_index (
       source_id TEXT NOT NULL,
       seq INTEGER NOT NULL,
