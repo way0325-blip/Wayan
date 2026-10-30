@@ -22,7 +22,26 @@ function latePoints(minutes) {
 router.get("/", async (req, res, next) => {
   try {
     const month = req.query.month;
+    const period = req.query.period || "month";
     if (!MONTH_RE.test(month || "")) return res.status(400).json({ error: "month 格式需為 YYYY-MM" });
+    if (!["month", "quarter", "year"].includes(period)) return res.status(400).json({ error: "period 必須是 month、quarter 或 year" });
+
+    const [year, monthNumber] = month.split("-").map(Number);
+    let startMonth = monthNumber;
+    let endMonth;
+    if (period === "quarter") {
+      startMonth = Math.floor((monthNumber - 1) / 3) * 3 + 1;
+      endMonth = startMonth + 3;
+    } else if (period === "year") {
+      startMonth = 1;
+      endMonth = 13;
+    } else {
+      endMonth = startMonth + 1;
+    }
+    const startDate = `${year}-${String(startMonth).padStart(2, "0")}-01`;
+    const endYear = year + (endMonth > 12 ? 1 : 0);
+    const normalizedEndMonth = endMonth > 12 ? endMonth - 12 : endMonth;
+    const endDate = `${endYear}-${String(normalizedEndMonth).padStart(2, "0")}-01`;
 
     const [summary, events] = await Promise.all([
       pool.query(
@@ -31,26 +50,26 @@ router.get("/", async (req, res, next) => {
           COALESCE(SUM(e.late_minutes) FILTER (WHERE e.event_type = '遲到' AND e.review_status = '已確認'), 0)::int AS late_minutes,
           COALESCE(SUM(e.points) FILTER (WHERE e.review_status = '已確認'), 0)::int AS confirmed_points,
           COUNT(e.id) FILTER (WHERE e.review_status = '待覆核')::int AS pending_count,
-          COUNT(e.id) FILTER (WHERE e.review_status = '核准排除')::int AS excluded_count,
+          COUNT(e.id) FILTER (WHERE e.review_status IN ('核准排除', '非司機因素'))::int AS excluded_count,
           COUNT(e.id)::int AS total_events
          FROM drivers d
          LEFT JOIN driver_performance_events e
-           ON e.driver_id = d.id AND to_char(e.event_date, 'YYYY-MM') = $1
+           ON e.driver_id = d.id AND e.event_date >= $1::date AND e.event_date < $2::date
          GROUP BY d.id, d.name
          ORDER BY d.id`,
-        [month]
+        [startDate, endDate]
       ),
       pool.query(
         `SELECT e.*, d.name AS driver_name
          FROM driver_performance_events e
          JOIN drivers d ON d.id = e.driver_id
-         WHERE to_char(e.event_date, 'YYYY-MM') = $1
+         WHERE e.event_date >= $1::date AND e.event_date < $2::date
          ORDER BY e.event_date DESC, e.created_at DESC`,
-        [month]
+        [startDate, endDate]
       ),
     ]);
 
-    res.json({ month, summary: summary.rows, events: events.rows });
+    res.json({ month, period, startDate, endDate, summary: summary.rows, events: events.rows });
   } catch (err) {
     next(err);
   }
