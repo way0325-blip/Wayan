@@ -393,7 +393,8 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
     <section id="driver-performance" class="page">
       <div class="panel">
         <div class="toolbar">
-          <label style="align-self:center">統計月份</label>
+          <label style="align-self:center">統計區間</label>
+          <select id="driverPerformancePeriod" style="max-width:140px"><option value="month">月</option><option value="quarter">季</option><option value="year">年度</option></select>
           <input id="driverPerformanceMonth" type="month" style="max-width:190px">
           <button class="action secondary" onclick="loadDriverPerformance()">查詢</button>
         </div>
@@ -1205,13 +1206,14 @@ async function loadDriverPerformance() {
   if (!monthInput.value) monthInput.value = currentMonthValue();
   const month = monthInput.value;
   try {
-    const data = await api(`/api/driver-performance?month=${encodeURIComponent(month)}`);
+    const period = document.getElementById("driverPerformancePeriod").value;
+    const data = await api(`/api/driver-performance?period=${encodeURIComponent(period)}&month=${encodeURIComponent(month)}`);
     driverPerformanceData = data;
     const select = document.getElementById("dpDriver");
     const selected = select.value;
     select.innerHTML = drivers.map(d => `<option value="${escapeHTML(d.id)}">${escapeHTML(d.id)}｜${escapeHTML(d.name)}</option>`).join("");
     if (drivers.some(d => d.id === selected)) select.value = selected;
-    document.getElementById("dpEventDate").value ||= new Date().toISOString().slice(0, 10);
+    document.getElementById("dpEventDate").value ||= localToday();
     renderDriverPerformance();
   } catch (err) {
     document.getElementById("driverPerformanceSummary").innerHTML = `<div class="alert">${escapeHTML(err.message)}</div>`;
@@ -2697,7 +2699,7 @@ document.getElementById("driverPerformanceForm").addEventListener("submit", asyn
   try {
     await api("/api/driver-performance/events", { method: "POST", body: JSON.stringify(payload) });
     e.target.reset();
-    document.getElementById("dpEventDate").value = new Date().toISOString().slice(0, 10);
+    document.getElementById("dpEventDate").value = localToday();
     document.getElementById("dpEventType").dispatchEvent(new Event("change"));
     message.textContent = "事件已儲存，等待主管覆核。";
     await loadDriverPerformance();
