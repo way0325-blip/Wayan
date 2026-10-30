@@ -420,8 +420,8 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
             </select></div>
             <div class="field"><label>事件日期</label><input id="dpEventDate" type="date" required></div>
             <div class="field"><label>原因/情況</label><input id="dpReason" maxlength="300" placeholder="例如：交通壅塞、未依規定通報"></div>
-            <div class="field dp-time-field"><label>預定時間（遲到必填）</label><input id="dpScheduledTime" type="time"></div>
-            <div class="field dp-time-field"><label>實際時間（遲到必填）</label><input id="dpActualTime" type="time"></div>
+            <div class="field dp-time-field"><label>預定時間（遲到必填）</label><input id="dpScheduledTime" type="time" required></div>
+            <div class="field dp-time-field"><label>實際時間（遲到必填）</label><input id="dpActualTime" type="time" required></div>
             <div class="field full"><label>事件說明</label><textarea id="dpNote" maxlength="2000" placeholder="記錄事件經過、司機說明及相關狀況"></textarea></div>
           </div>
           <button class="action" type="submit">儲存事件紀錄</button>
