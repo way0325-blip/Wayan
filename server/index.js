@@ -22,6 +22,7 @@ const vehicleMaintenanceItemRoutes = require("./routes/vehicleMaintenanceItems")
 const dispatchStaffRoutes = require("./routes/dispatchStaff");
 const attendanceRoutes = require("./routes/attendance");
 const shopeeRoutes = require("./routes/shopee");
+const shopeeViolationRoutes = require("./routes/shopeeViolations");
 
 const app = express();
 
@@ -99,6 +100,7 @@ app.use("/api/vehicle-maintenance-items", vehicleMaintenanceItemRoutes);
 app.use("/api/dispatch-staff", dispatchStaffRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/shopee", shopeeRoutes);
+app.use("/api/shopee/violations", shopeeViolationRoutes);
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 

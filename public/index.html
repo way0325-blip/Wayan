@@ -284,7 +284,8 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
     <button class="nav-btn active" data-page="dashboard">📊 今日儀表板</button>
     <button class="nav-btn" data-page="orders">📦 訂單與車趟</button>
     <button class="nav-btn" data-page="shopee">🟢 蝦皮車隊需求</button>
-    <button class="nav-btn" data-page="drivers">👨‍✈️ 司機管理</button>
+    <button class="nav-btn" data-page="violations">📋 蝦皮違規管理</button>
+        <button class="nav-btn" data-page="drivers">👨‍✈️ 司機管理</button>
     <button class="nav-btn" data-page="vehicles">🚚 車輛管理</button>
     <button class="nav-btn" data-page="schedule">📅 班表</button>
     <button class="nav-btn admin-only hidden" data-page="users">⚙️ 後台管理</button>
@@ -312,6 +313,22 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
         <div class="card"><div class="card-title">已完成車趟</div><div id="statDone" class="card-value green">0</div></div>
         <div class="card"><div class="card-title">待派車</div><div id="statPending" class="card-value yellow">0</div></div>
         <div class="card"><div class="card-title">異常項目</div><div id="statAlerts" class="card-value red">0</div></div>
+      </div>
+
+      <div class="panel" style="margin-bottom:20px">
+        <div class="toolbar" style="justify-content:space-between;align-items:center">
+          <h3 style="margin:0">蝦皮與違規營運摘要</h3>
+          <button class="action secondary small" onclick="loadOperationsSummary()">重新整理</button>
+        </div>
+        <div id="operationsSummary" class="cards" style="grid-template-columns:repeat(auto-fit,minmax(145px,1fr));margin:12px 0 0">
+          <div class="card"><div class="card-title">今日蝦皮路線</div><div class="card-value cyan">—</div></div>
+          <div class="card"><div class="card-title">需求車數</div><div class="card-value">—</div></div>
+          <div class="card"><div class="card-title">已確認車數</div><div class="card-value green">—</div></div>
+          <div class="card"><div class="card-title">待回覆車數</div><div class="card-value yellow">—</div></div>
+          <div class="card"><div class="card-title">尚缺車數</div><div class="card-value red">—</div></div>
+          <div class="card"><div class="card-title">未結案違規</div><div class="card-value red">—</div></div>
+        </div>
+        <div id="operationsSummaryNote" class="hint">資料載入中…</div>
       </div>
 
       <div class="grid-2">
@@ -457,6 +474,12 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
           </div>
           <div id="shopeeFleetTable" class="table-wrap"></div>
         </div>
+      </div>
+    </section>
+
+    <section id="violations" class="page">
+      <div class="panel" style="padding:0;overflow:hidden">
+        <iframe src="/shopee-violations.html" title="蝦皮違規管理" style="display:block;width:100%;height:calc(100vh - 150px);min-height:720px;border:0;background:#f3f5f9"></iframe>
       </div>
     </section>
 
@@ -880,10 +903,49 @@ async function loadAll() {
 function refresh() {
   applySettings();
   renderDashboard();
+  loadOperationsSummary();
   renderOrders();
   renderDrivers();
   renderVehicles();
   if (isAdmin()) renderUsers();
+}
+
+async function loadOperationsSummary() {
+  const target = document.getElementById("operationsSummary");
+  const note = document.getElementById("operationsSummaryNote");
+  if (!target || !note) return;
+  const token = getToken();
+  if (!token) return;
+  const today = localToday();
+  const [routeResult, caseResult] = await Promise.allSettled([
+    api("/api/shopee/routes?date=" + encodeURIComponent(today)),
+    api("/api/shopee/violations/cases"),
+  ]);
+  const routes = routeResult.status === "fulfilled" && Array.isArray(routeResult.value)
+    ? routeResult.value : [];
+  const required = routes.reduce((sum, r) => sum + Number(r.requiredTrucks || 0), 0);
+  const confirmed = routes.reduce((sum, r) => sum + Number(r.confirmedTrucks || 0), 0);
+  const pending = routes.reduce((sum, r) => sum + Number(r.pendingTrucks || 0), 0);
+  const shortage = routes.reduce((sum, r) => sum + Number(r.shortage || 0), 0);
+  const cases = caseResult.status === "fulfilled" && Array.isArray(caseResult.value)
+    ? caseResult.value : null;
+  const openCases = cases ? cases.filter(c => c.status !== "已結案").length : null;
+  const metrics = [
+    ["今日蝦皮路線", routes.length, "cyan"],
+    ["需求車數", required, ""],
+    ["已確認車數", confirmed, "green"],
+    ["待回覆車數", pending, "yellow"],
+    ["尚缺車數", shortage, shortage ? "red" : "green"],
+    ["未結案違規", openCases === null ? "—" : openCases, openCases ? "red" : "green"],
+  ];
+  target.innerHTML = metrics.map(([label, value, color]) =>
+    '<div class="card"><div class="card-title">' + escapeHTML(label) +
+    '</div><div class="card-value ' + color + '">' + escapeHTML(value) + '</div></div>'
+  ).join("");
+  const problems = [];
+  if (routeResult.status === "rejected") problems.push("蝦皮需求資料暫時無法讀取");
+  if (caseResult.status === "rejected") problems.push("違規案件資料暫時無法讀取");
+  note.textContent = "統計日期：" + today + (problems.length ? "｜" + problems.join("；") : "｜車數依今日蝦皮需求及車隊回覆彙總");
 }
 
 function renderDashboard() {
@@ -2440,6 +2502,7 @@ document.querySelectorAll(".nav-btn[data-page]").forEach(button => {
       vehicles: "車輛資料管理",
       schedule: "班表",
       shopee: "蝦皮店到店・車隊需求",
+      violations: "蝦皮違規管理",
       users: "後台管理",
     };
     document.getElementById("pageTitle").textContent = titles[button.dataset.page];
