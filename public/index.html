@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>港區星際運輸調度中心</title>
+<title>Wayan｜個人營運控制平台</title>
 
 <style>
 :root {
@@ -246,6 +246,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
   .form-grid .full { grid-column: auto; }
 }
 </style>
+<link rel="stylesheet" href="/control.css">
 </head>
 
 <body>
@@ -270,7 +271,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
       <button class="primary">登入系統</button>
     </form>
 
-    <div class="demo-hint">展示版帳號：admin　密碼：1234(可於 .env 調整)</div>
+    <div class="demo-hint">請使用管理員提供的個人帳號登入</div>
   </div>
 </section>
 
@@ -278,7 +279,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
   <aside class="sidebar">
     <div class="brand">
       <strong id="brandName">🚀 港區星際運輸</strong>
-      <small>DISPATCH CENTER</small>
+      <small>WAYAN · OPERATIONS</small>
     </div>
 
     <button class="nav-btn active" data-page="dashboard">📊 今日儀表板</button>
@@ -293,6 +294,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
        href="https://howwin-dispatch-operations.kidjoe019.chatgpt.site/" target="_blank" rel="noopener"
        title="外部系統,密碼 212">🔗 東岸聯興派工報板</a>
 
+    <button class="nav-btn admin-only hidden" data-page="lineControl">💬 LINE 司機平台</button>
     <button id="logoutBtn" class="nav-btn logout">↪ 登出系統</button>
   </aside>
 
@@ -307,13 +309,27 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
 
     <section id="dashboard" class="page active">
       <div id="announcementBox" class="notice hidden"></div>
+      <div class="control-hero"><div><span class="eyebrow">WAYAN / PERSONAL OPERATIONS</span><h1>掌握每一趟，安心前行。</h1><p>港口作業、車隊需求與司機動態，在這裡同步掌握。</p><small id="controlDate"></small></div><span id="controlSync" class="sync-badge" role="status" aria-live="polite">尚未連線</span></div>
+      <div class="control-toolbar"><button class="action secondary small" id="controlRefresh">重新整理</button><small id="controlUpdated">等待首次同步</small></div>
+      <p id="controlError" class="control-error" role="alert"></p>
       <div class="cards">
         <div class="card"><div class="card-title">今日訂單</div><div id="statOrders" class="card-value cyan">0</div></div>
-        <div class="card"><div class="card-title">已完成車趟</div><div id="statDone" class="card-value green">0</div></div>
-        <div class="card"><div class="card-title">待派車</div><div id="statPending" class="card-value yellow">0</div></div>
-        <div class="card"><div class="card-title">異常項目</div><div id="statAlerts" class="card-value red">0</div></div>
+        <div class="card"><div class="card-title">今日已完成車趟</div><div id="statDone" class="card-value green">0</div></div>
+        <div class="card"><div class="card-title">今日待派車</div><div id="statPending" class="card-value yellow">0</div></div>
+        <div class="card"><div class="card-title">待處理異常車趟</div><div id="statAlerts" class="card-value red">0</div></div>
       </div>
 
+      <div class="control-grid">
+        <button class="control-metric" data-control-go="orders"><small>今日執行中車趟</small><strong id="controlActive">—</strong><span>已派車與執行中</span></button>
+        <button class="control-metric" data-control-go="shopee"><small>蝦皮需求車數</small><strong id="controlRequired">—</strong><span>當日路線需求</span></button>
+        <button class="control-metric" data-control-go="shopee"><small>車隊確認車數</small><strong id="controlConfirmed">—</strong><span>待回覆 <b id="controlPendingFleet">—</b> 車</span></button>
+        <button class="control-metric" data-control-go="shopee"><small>尚缺車數</small><strong id="controlShortage">—</strong><span>需求減已確認車數</span></button>
+        <button class="control-metric" data-control-go="drivers"><small>司機可用率</small><strong id="controlDrivers">—</strong><span id="controlDriverCount">等待資料</span></button>
+        <button class="control-metric" data-control-go="vehicles"><small>車輛可用率</small><strong id="controlVehicles">—</strong><span id="controlVehicleCount">等待資料</span></button>
+        <div class="control-metric"><small>待處理違規案件</small><strong>待建置</strong><span>人工覆核流程尚未開放</span></div>
+        <div class="control-metric"><small>LINE 失敗事件</small><strong id="controlFailed">—</strong><span>處理或回覆失敗</span></div>
+      </div>
+      <div class="control-split"><div class="panel"><h3>異常與事故通知 · <span id="controlIncidents">—</span> 件待處理</h3><div id="controlIncidentList" class="control-list">等待同步</div></div><div class="panel"><span class="eyebrow">QUICK ACTIONS</span><h3>接下來，安排什麼？</h3><div class="control-toolbar"><button class="action" data-control-go="orders">前往派車</button><button class="action secondary" data-control-go="shopee">分派車隊需求</button><button class="action secondary" data-control-go="schedule">查看班表</button></div><p class="hint">LINE 到站、完成與異常回報會同步顯示。異常結案後，車輛仍需人工確認維修結果才恢復派遣。</p></div></div>
       <div class="grid-2">
         <div class="panel">
           <h3>今日任務完成率</h3>
@@ -335,6 +351,19 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
       </div>
     </section>
 
+    <section id="lineControl" class="page">
+      <div class="control-hero"><div><span class="eyebrow">WAYAN / LINE DRIVER ASSISTANT</span><h1>司機的行動工作入口</h1><p>綁定身分、查詢任務、回報現場狀況。</p></div><button class="action secondary" id="botRefresh">更新狀態</button></div>
+      <p id="botError" class="control-error" role="alert"></p>
+      <div class="control-split"><div class="panel"><h3>綁定司機</h3><p id="botConfigured" role="status">等待檢查</p><ol class="bot-steps"><li>選擇司機，產生十分鐘有效的一次性綁定碼。</li><li>將代碼私下交給本人，請司機加測試官方帳號好友。</li><li>司機私訊輸入「綁定 代碼」，完成後即可查詢自己的任務。</li></ol><div class="control-toolbar"><select id="botDriver" aria-label="選擇綁定司機"></select><button class="action" id="botGenerate">產生綁定碼</button></div><p id="botCode" class="control-code control-notice" role="status"></p></div>
+      <div class="panel"><h3>司機指令</h3><p class="control-notice">我的任務
+統計
+到站 訂單編號
+完成 訂單編號
+異常 訂單編號 說明
+事故 訂單編號 說明</p><p class="hint">僅在私人對話提供本人任務。未綁定帳號無法讀取派車資料。回報事故或車輛異常後，車輛會停派並通知管理端。</p></div></div>
+      <div class="panel"><h3>已綁定司機</h3><div id="botBindings"></div></div><br>
+      <div class="panel"><h3>近期事件與重試</h3><p class="hint">處理失敗可重試，已完成資料異動不會重複執行。若只有回覆失敗，請司機重新發送「我的任務」確認狀態。</p><div id="botEvents" class="table-wrap"></div></div>
+    </section>
     <section id="orders" class="page">
       <details id="taskStatsPanel" class="panel" open style="margin-bottom:20px">
         <summary style="cursor:pointer;font-weight:bold;font-size:16px">📊 總數車數統計(依作業日期)</summary>
@@ -800,6 +829,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
   </div>
 </div>
 
+<script src="/control.js"></script>
 <script>
 const todayEl = document.getElementById("today");
 todayEl.textContent = new Date().toLocaleDateString("zh-TW", {
@@ -887,6 +917,7 @@ function refresh() {
 }
 
 function renderDashboard() {
+  window.WayanControl?.refresh();
   const done = orders.filter(o => o.status === "已完成").length;
   const pending = orders.filter(o => o.status === "待派車").length;
   const rate = orders.length ? Math.round(done / orders.length * 100) : 0;
@@ -902,7 +933,8 @@ function renderDashboard() {
     ? alertsList.map(a => `<div class="alert ${a.severity === "overdue" ? "" : "warn"}">${a.severity === "overdue" ? "⚠" : "⏰"} ${escapeHTML(a.message)}</div>`).join("")
     : `<div class="empty">目前沒有異常項目(30 天內到期或逾期才會顯示)</div>`;
 
-  const recent = orders.slice().reverse().slice(0, 5);
+  const dayKey = new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Taipei"}).format(new Date());
+  const recent = orders.filter(o => o.time.startsWith(dayKey)).slice().sort((a,b)=>a.time.localeCompare(b.time)).slice(0,10);
   document.getElementById("dashboardOrders").innerHTML = orderTable(recent);
 }
 
@@ -2375,6 +2407,7 @@ function showLogin() {
 }
 
 function showApp() {
+  window.WayanControl?.start();
   document.getElementById("loginPage").classList.add("hidden");
   document.getElementById("app").classList.remove("hidden");
 
@@ -2390,6 +2423,7 @@ function showApp() {
 }
 
 function logout() {
+  window.WayanControl?.stop();
   localStorage.removeItem("token");
   localStorage.removeItem("username");
   localStorage.removeItem("role");
@@ -2441,6 +2475,7 @@ document.querySelectorAll(".nav-btn[data-page]").forEach(button => {
       schedule: "班表",
       shopee: "蝦皮店到店・車隊需求",
       users: "後台管理",
+      lineControl: "LINE 司機平台",
     };
     document.getElementById("pageTitle").textContent = titles[button.dataset.page];
     if (button.dataset.page === "schedule") loadSchedule();

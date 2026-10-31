@@ -15,7 +15,7 @@ const vehicleRoutes = require("./routes/vehicles");
 const orderRoutes = require("./routes/orders");
 const settingsRoutes = require("./routes/settings");
 const auditLogRoutes = require("./routes/auditLogs");
-const lineWebhookRoutes = require("./routes/lineWebhook");
+const lineWebhookRoutes = require("./routes/secureLineWebhook");
 const lineCronRoutes = require("./routes/lineCron");
 const alertRoutes = require("./routes/alerts");
 const vehicleMaintenanceItemRoutes = require("./routes/vehicleMaintenanceItems");
@@ -68,6 +68,7 @@ app.use(express.json({ limit: "100kb" }));
 
 // 全站 API 速率限制,避免暴力嘗試或濫用
 const apiLimiter = rateLimit({
+  skip: req => req.method === 'GET' && req.path.startsWith('/control/'),
   windowMs: 15 * 60 * 1000,
   limit: 300,
   standardHeaders: true,
@@ -99,8 +100,11 @@ app.use("/api/vehicle-maintenance-items", vehicleMaintenanceItemRoutes);
 app.use("/api/dispatch-staff", dispatchStaffRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/shopee", shopeeRoutes);
+app.use("/api/control", require("./routes/control"));
+app.use("/api/line/admin", require("./routes/lineAdmin"));
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
+app.use('/api', (req,res)=>res.status(404).json({error:'找不到 API'}));
 
 // 提供前端靜態檔案
 app.use(express.static(path.join(__dirname, "..", "public")));
@@ -110,11 +114,16 @@ app.get("*", (req, res) => {
 });
 
 app.use((err, req, res, next) => {
-  console.error(err);
+  if (err.type === 'entity.parse.failed') return res.status(400).json({error:'JSON 格式錯誤'});
+  if (err.type === 'entity.too.large') return res.status(413).json({error:'請求內容過大'});
+  console.error('API_ERROR', err.code || err.name);
   res.status(500).json({ error: "伺服器發生錯誤" });
 });
 
 async function start() {
+  if ((process.env.JWT_SECRET || '').length < 32 || (process.env.ADMIN_PASSWORD || '').length < 12) {
+    throw new Error('測試平台啟動需要獨立的 JWT_SECRET（至少 32 字）及 ADMIN_PASSWORD（至少 12 字），禁止沿用展示密碼');
+  }
   await initDb();
   app.listen(PORT, () => {
     console.log(`港區星際運輸調度中心伺服器已啟動: http://localhost:${PORT}`);

@@ -1,4 +1,5 @@
 const { pool } = require("./db");
+const { transaction, audit } = require('./transaction');
 
 function serializeOrder(row) {
   return {
@@ -40,26 +41,25 @@ async function findActiveOrderByContainerFragment(fragment) {
 
 // 完成訂單的核心邏輯,供後台 API 與 LINE 回報共用。actor 只用於寫入操作紀錄。
 async function completeOrder(orderId, actor) {
-  const order = await findOrder(orderId);
+  return transaction(pool, async db => {
+  await db.query('SELECT pg_advisory_xact_lock(870032)');
+  const order = (await db.query('SELECT * FROM orders WHERE id=$1 FOR UPDATE',[orderId])).rows[0];
   if (!order) return { error: "找不到此訂單" };
   if (order.status === "已完成") return { order, alreadyDone: true };
+  if (!['已派車','執行中'].includes(order.status)) return {error:'只有已派車或執行中任務可以完成',status:409};
 
-  const { rows } = await pool.query(
+  const { rows } = await db.query(
     "UPDATE orders SET status = '已完成' WHERE id = $1 RETURNING *",
     [order.id]
   );
-  if (order.driver_id) await pool.query("UPDATE drivers SET status = '可派車' WHERE id = $1", [order.driver_id]);
-  if (order.vehicle_id) await pool.query("UPDATE vehicles SET status = '可用' WHERE id = $1", [order.vehicle_id]);
-
-  try {
-    await pool.query(
-      `INSERT INTO audit_logs (username, role, action, entity, entity_id, detail)
-       VALUES ($1, $2, '完成', '訂單', $3, $4)`,
-      [actor?.username || "-", actor?.role || "-", order.id, order.container]
-    );
-  } catch (e) { console.error("寫入操作紀錄失敗:", e.message); }
+  if (order.driver_id) await db.query(`UPDATE drivers SET status='可派車' WHERE id=$1 AND status='執行中'
+    AND NOT EXISTS(SELECT 1 FROM orders WHERE driver_id=$1 AND status IN ('已派車','執行中'))`,[order.driver_id]);
+  if (order.vehicle_id) await db.query(`UPDATE vehicles SET status='可用' WHERE id=$1 AND status='執行中'
+    AND NOT EXISTS(SELECT 1 FROM orders WHERE vehicle_id=$1 AND status IN ('已派車','執行中'))`,[order.vehicle_id]);
+  await audit(db,{username:actor?.username||'-',role:actor?.role||'-'},'完成','訂單',order.id,order.container);
 
   return { order: rows[0] };
+  });
 }
 
 module.exports = { serializeOrder, findOrder, findActiveOrderByContainerFragment, completeOrder };

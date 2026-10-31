@@ -44,6 +44,7 @@ function chunkText(text) {
 
 async function callLineApi(path, body) {
   const res = await fetch(`${API_BASE}${path}`, {
+    signal: AbortSignal.timeout(4000),
     method: "POST",
     headers: {
       "Content-Type": "application/json",

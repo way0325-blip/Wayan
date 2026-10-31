@@ -3,6 +3,7 @@ const { pool } = require("../db");
 const { requireAuth, requireRole } = require("../auth");
 const { validateBody } = require("../validation");
 const { logAction } = require("../audit");
+const {transaction,audit}=require("../transaction");
 const { getSettings } = require("../settings");
 const { isPastDate, isValidDateKey } = require("../dates");
 const { serializeOrder, findOrder, completeOrder } = require("../orderService");
@@ -344,7 +345,7 @@ router.patch(
 );
 
 // 派車前的合法性檢查。keep 用於改派:沿用原本的司機/車輛時,不再要求其為閒置狀態
-async function validateDispatch(order, driver, vehicle, keep = {}) {
+async function validateDispatch(order, driver, vehicle, keep = {}, db = pool) {
   const errors = [];
 
   if (!driver) errors.push("尚未選擇司機");
@@ -358,8 +359,11 @@ async function validateDispatch(order, driver, vehicle, keep = {}) {
   if (driver && isPastDate(driver.license)) errors.push("司機證照已逾期");
   if (vehicle && isPastDate(vehicle.maintenance)) errors.push("車輛保養已逾期,禁止派車");
 
+  if (vehicle && vehicle.inspection_date && isPastDate(vehicle.inspection_date)) errors.push('車輛驗車已逾期');
   if (driver) {
-    const clash = await pool.query(
+    const leave=await db.query("SELECT 1 FROM attendance_records WHERE staff_type='driver' AND staff_id=$1 AND date=$2 AND status IN ('休假','曠職')",[driver.id,order.time.slice(0,10)]);
+    if(leave.rowCount) errors.push('司機當日休假或曠職，禁止派車');
+    const clash = await db.query(
       `SELECT 1 FROM orders
        WHERE id != $1 AND driver_id = $2 AND status IN ('已派車', '執行中') AND time = $3`,
       [order.id, driver.id, order.time]
@@ -367,7 +371,7 @@ async function validateDispatch(order, driver, vehicle, keep = {}) {
     if (clash.rows.length) errors.push("司機同一時段已有其他任務");
   }
   if (vehicle) {
-    const clash = await pool.query(
+    const clash = await db.query(
       `SELECT 1 FROM orders
        WHERE id != $1 AND vehicle_id = $2 AND status IN ('已派車', '執行中') AND time = $3`,
       [order.id, vehicle.id, order.time]
@@ -377,9 +381,9 @@ async function validateDispatch(order, driver, vehicle, keep = {}) {
   return errors;
 }
 
-async function loadResources(driverId, vehicleId) {
-  const d = await pool.query("SELECT * FROM drivers WHERE id = $1", [driverId]);
-  const v = await pool.query("SELECT * FROM vehicles WHERE id = $1", [vehicleId]);
+async function loadResources(driverId, vehicleId, db = pool) {
+  const d = await db.query("SELECT * FROM drivers WHERE id = $1", [driverId]);
+  const v = await db.query("SELECT * FROM vehicles WHERE id = $1", [vehicleId]);
   return { driver: d.rows[0] || null, vehicle: v.rows[0] || null };
 }
 
@@ -388,81 +392,40 @@ const dispatchSchema = {
   vehicleId: { required: true, type: "string", label: "車輛" },
 };
 
-router.patch("/:id/dispatch", validateBody(dispatchSchema), async (req, res, next) => {
+async function dispatchOperation(req, res, next, reassign) {
   try {
-    const order = await findOrder(req.params.id);
-    if (!order) return res.status(404).json({ error: "找不到此訂單" });
-    if (order.status !== "待派車") {
-      return res.status(409).json({ error: "只有「待派車」的訂單可以派車;已派車請使用「改派」" });
-    }
-
-    const { driver, vehicle } = await loadResources(req.body.driverId, req.body.vehicleId);
-    const errors = await validateDispatch(order, driver, vehicle);
-    if (errors.length) return res.status(409).json({ error: "派車失敗", details: errors });
-
-    const { rows } = await pool.query(
-      "UPDATE orders SET status = '已派車', driver_id = $1, vehicle_id = $2 WHERE id = $3 RETURNING *",
-      [driver.id, vehicle.id, order.id]
-    );
-    await pool.query("UPDATE drivers SET status = '執行中' WHERE id = $1", [driver.id]);
-    await pool.query("UPDATE vehicles SET status = '執行中' WHERE id = $1", [vehicle.id]);
-
-    await logAction(req, "派車", "訂單", order.id, `司機 ${driver.name}、車輛 ${vehicle.plate}`);
-    res.json(serializeOrder(rows[0]));
-  } catch (err) {
-    next(err);
-  }
-});
-
-// 改派:已派車/執行中的訂單更換司機或車輛,舊的釋放、新的佔用
-router.patch("/:id/reassign", validateBody(dispatchSchema), async (req, res, next) => {
+    const result=await transaction(pool,async db=>{
+      await db.query('SELECT pg_advisory_xact_lock(870032)');
+      const order=(await db.query('SELECT * FROM orders WHERE id=$1 FOR UPDATE',[req.params.id])).rows[0];
+      if(!order) return {status:404,error:'找不到此訂單'};
+      if(reassign ? !['已派車','執行中'].includes(order.status) : order.status!=='待派車') return {status:409,error:reassign?'只有已派車或執行中的訂單可以改派':'只有待派車的訂單可以派車'};
+      const {driver,vehicle}=await loadResources(req.body.driverId,req.body.vehicleId,db);
+      const keep={driver:reassign && driver?.id===order.driver_id,vehicle:reassign && vehicle?.id===order.vehicle_id};
+      if(reassign && keep.driver && keep.vehicle) return {status:400,error:'司機與車輛都沒有變更'};
+      const errors=await validateDispatch(order,driver,vehicle,keep,db);
+      if(errors.length) return {status:409,error:'派車失敗',details:errors};
+      const row=(await db.query("UPDATE orders SET status=CASE WHEN status='待派車' THEN '已派車' ELSE status END,driver_id=$1,vehicle_id=$2 WHERE id=$3 RETURNING *",[driver.id,vehicle.id,order.id])).rows[0];
+      if(reassign) {
+        await db.query("UPDATE drivers SET status='可派車' WHERE id=$1 AND id<>$2 AND status='執行中' AND NOT EXISTS(SELECT 1 FROM orders WHERE driver_id=$1 AND status IN ('已派車','執行中'))",[order.driver_id,driver.id]);
+        await db.query("UPDATE vehicles SET status='可用' WHERE id=$1 AND id<>$2 AND status='執行中' AND NOT EXISTS(SELECT 1 FROM orders WHERE vehicle_id=$1 AND status IN ('已派車','執行中'))",[order.vehicle_id,vehicle.id]);
+      }
+      await db.query("UPDATE drivers SET status='執行中' WHERE id=$1",[driver.id]);
+      await db.query("UPDATE vehicles SET status='執行中' WHERE id=$1",[vehicle.id]);
+      await audit(db,req.user,reassign?'改派':'派車','訂單',order.id,'司機 '+driver.name+'、車輛 '+vehicle.plate);
+      return {data:serializeOrder(row)};
+    });
+    if(result.error) return res.status(result.status).json({error:result.error,details:result.details});
+    res.json(result.data);
+  } catch(err) {next(err);}
+}
+router.patch('/:id/dispatch',validateBody(dispatchSchema),(req,res,next)=>dispatchOperation(req,res,next,false));
+router.patch('/:id/reassign',validateBody(dispatchSchema),(req,res,next)=>dispatchOperation(req,res,next,true));
+router.patch('/:id/complete',async(req,res,next)=>{
   try {
-    const order = await findOrder(req.params.id);
-    if (!order) return res.status(404).json({ error: "找不到此訂單" });
-    if (!["已派車", "執行中"].includes(order.status)) {
-      return res.status(409).json({ error: "只有「已派車/執行中」的訂單可以改派" });
-    }
-
-    const { driver, vehicle } = await loadResources(req.body.driverId, req.body.vehicleId);
-    const keep = {
-      driver: driver && driver.id === order.driver_id,
-      vehicle: vehicle && vehicle.id === order.vehicle_id,
-    };
-    if (keep.driver && keep.vehicle) {
-      return res.status(400).json({ error: "司機與車輛都沒有變更" });
-    }
-
-    const errors = await validateDispatch(order, driver, vehicle, keep);
-    if (errors.length) return res.status(409).json({ error: "改派失敗", details: errors });
-
-    if (!keep.driver && order.driver_id) {
-      await pool.query("UPDATE drivers SET status = '可派車' WHERE id = $1", [order.driver_id]);
-    }
-    if (!keep.vehicle && order.vehicle_id) {
-      await pool.query("UPDATE vehicles SET status = '可用' WHERE id = $1", [order.vehicle_id]);
-    }
-    await pool.query("UPDATE drivers SET status = '執行中' WHERE id = $1", [driver.id]);
-    await pool.query("UPDATE vehicles SET status = '執行中' WHERE id = $1", [vehicle.id]);
-
-    const { rows } = await pool.query(
-      "UPDATE orders SET driver_id = $1, vehicle_id = $2 WHERE id = $3 RETURNING *",
-      [driver.id, vehicle.id, order.id]
-    );
-    await logAction(req, "改派", "訂單", order.id, `改為司機 ${driver.name}、車輛 ${vehicle.plate}`);
-    res.json(serializeOrder(rows[0]));
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.patch("/:id/complete", async (req, res, next) => {
-  try {
-    const { order, error } = await completeOrder(req.params.id, req.user);
-    if (error) return res.status(404).json({ error });
+    const {order,error,status}=await completeOrder(req.params.id,req.user);
+    if(error) return res.status(status||404).json({error});
     res.json(serializeOrder(order));
-  } catch (err) {
-    next(err);
-  }
+  } catch(err) {next(err);}
 });
 
 // 把選定的訂單整理成明細文字,推送到後台設定好的 LINE 群組(不用手動複製貼上)
@@ -493,65 +456,51 @@ router.post("/push-line", async (req, res, next) => {
   }
 });
 
-// 管理員強制修改狀態(例如誤按完成、需要退回重派)
-router.patch(
-  "/:id/status",
-  requireRole("admin"),
-  validateBody({ status: { required: true, enum: ORDER_STATUSES, label: "狀態" } }),
-  async (req, res, next) => {
-    try {
-      const order = await findOrder(req.params.id);
-      if (!order) return res.status(404).json({ error: "找不到此訂單" });
-
-      const next_ = req.body.status;
-      if (next_ === order.status) return res.json(serializeOrder(order));
-
-      let rows;
-      if (next_ === "已派車" || next_ === "執行中") {
-        if (!order.driver_id || !order.vehicle_id) {
-          return res.status(409).json({ error: "此訂單沒有指派司機與車輛,請先用「派車」" });
-        }
-        ({ rows } = await pool.query("UPDATE orders SET status = $1 WHERE id = $2 RETURNING *", [next_, order.id]));
-        await pool.query("UPDATE drivers SET status = '執行中' WHERE id = $1", [order.driver_id]);
-        await pool.query("UPDATE vehicles SET status = '執行中' WHERE id = $1", [order.vehicle_id]);
-      } else {
-        if (order.driver_id) await pool.query("UPDATE drivers SET status = '可派車' WHERE id = $1", [order.driver_id]);
-        if (order.vehicle_id) await pool.query("UPDATE vehicles SET status = '可用' WHERE id = $1", [order.vehicle_id]);
-        // 退回「待派車」時一併清除派遣資訊,才能重新派車;「已完成」則保留紀錄
-        const clear = next_ === "待派車";
-        ({ rows } = await pool.query(
-          `UPDATE orders SET status = $1,
-             driver_id = CASE WHEN $3 THEN NULL ELSE driver_id END,
-             vehicle_id = CASE WHEN $3 THEN NULL ELSE vehicle_id END
-           WHERE id = $2 RETURNING *`,
-          [next_, order.id, clear]
-        ));
-      }
-
-      await logAction(req, "強制改狀態", "訂單", order.id, `${order.status} → ${next_}`);
-      res.json(serializeOrder(rows[0]));
-    } catch (err) {
-      next(err);
-    }
-  }
-);
-
-router.delete("/:id", requireRole("admin"), async (req, res, next) => {
+router.patch('/:id/status',requireRole('admin'),validateBody({status:{required:true,enum:ORDER_STATUSES,label:'狀態'}}),async(req,res,next)=>{
   try {
-    const order = await findOrder(req.params.id);
-    if (!order) return res.status(404).json({ error: "找不到此訂單" });
-
-    if (["已派車", "執行中"].includes(order.status)) {
-      if (order.driver_id) await pool.query("UPDATE drivers SET status = '可派車' WHERE id = $1", [order.driver_id]);
-      if (order.vehicle_id) await pool.query("UPDATE vehicles SET status = '可用' WHERE id = $1", [order.vehicle_id]);
-    }
-
-    await pool.query("DELETE FROM orders WHERE id = $1", [order.id]);
-    await logAction(req, "刪除", "訂單", order.id, order.container);
-    res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
+    const result=await transaction(pool,async db=>{
+      await db.query('SELECT pg_advisory_xact_lock(870032)');
+      const order=(await db.query('SELECT * FROM orders WHERE id=$1 FOR UPDATE',[req.params.id])).rows[0];
+      if(!order) return {error:'找不到此訂單',status:404};
+      const target=req.body.status;
+      if(target===order.status) return {data:serializeOrder(order)};
+      const wasActive=['已派車','執行中'].includes(order.status);
+      if(['已派車','執行中'].includes(target)) {
+        const {driver,vehicle}=await loadResources(order.driver_id,order.vehicle_id,db);
+        const errors=await validateDispatch(order,driver,vehicle,{driver:wasActive,vehicle:wasActive},db);
+        if(errors.length) return {error:'狀態修改失敗',status:409,details:errors};
+        await db.query("UPDATE drivers SET status='執行中' WHERE id=$1",[order.driver_id]);
+        await db.query("UPDATE vehicles SET status='執行中' WHERE id=$1",[order.vehicle_id]);
+      }
+      const row=(await db.query('UPDATE orders SET status=$1,driver_id=CASE WHEN $3 THEN NULL ELSE driver_id END,vehicle_id=CASE WHEN $3 THEN NULL ELSE vehicle_id END WHERE id=$2 RETURNING *',[target,order.id,target==='待派車'])).rows[0];
+      if(!['已派車','執行中'].includes(target)) {
+        await db.query("UPDATE drivers SET status='可派車' WHERE id=$1 AND status='執行中' AND NOT EXISTS(SELECT 1 FROM orders WHERE driver_id=$1 AND status IN ('已派車','執行中'))",[order.driver_id]);
+        await db.query("UPDATE vehicles SET status='可用' WHERE id=$1 AND status='執行中' AND NOT EXISTS(SELECT 1 FROM orders WHERE vehicle_id=$1 AND status IN ('已派車','執行中'))",[order.vehicle_id]);
+      }
+      await audit(db,req.user,'強制改狀態','訂單',order.id,order.status+' → '+target);
+      return {data:serializeOrder(row)};
+    });
+    if(result.error) return res.status(result.status).json({error:result.error,details:result.details});
+    res.json(result.data);
+  } catch(err) {next(err);}
+});
+router.delete('/:id',requireRole('admin'),async(req,res,next)=>{
+  try {
+    const result=await transaction(pool,async db=>{
+      await db.query('SELECT pg_advisory_xact_lock(870032)');
+      const order=(await db.query('SELECT * FROM orders WHERE id=$1 FOR UPDATE',[req.params.id])).rows[0];
+      if(!order) return {error:'找不到此訂單',status:404};
+      const used=await db.query('SELECT 1 FROM order_reports WHERE order_id=$1 UNION ALL SELECT 1 FROM operational_incidents WHERE order_id=$1',[order.id]);
+      if(used.rowCount) return {error:'已有回報或事故歷程，禁止刪除',status:409};
+      await db.query('DELETE FROM orders WHERE id=$1',[order.id]);
+      await db.query("UPDATE drivers SET status='可派車' WHERE id=$1 AND status='執行中' AND NOT EXISTS(SELECT 1 FROM orders WHERE driver_id=$1 AND status IN ('已派車','執行中'))",[order.driver_id]);
+      await db.query("UPDATE vehicles SET status='可用' WHERE id=$1 AND status='執行中' AND NOT EXISTS(SELECT 1 FROM orders WHERE vehicle_id=$1 AND status IN ('已派車','執行中'))",[order.vehicle_id]);
+      await audit(db,req.user,'刪除','訂單',order.id,order.container);
+      return {};
+    });
+    if(result.error) return res.status(result.status).json({error:result.error});
+    res.status(204).end();
+  } catch(err) {next(err);}
 });
 
 router.get("/export/csv", async (req, res, next) => {
