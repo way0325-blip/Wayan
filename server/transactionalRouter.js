@@ -24,12 +24,16 @@ function transactionalRouter(router, rawPool, lockKey) {
               };
               await handler(req,buffered,err=>{throw err;});
               if (!output) throw new Error('Missing transaction response');
+              if(output.status>=400) throw Object.assign(new Error('TRANSACTION_REJECTED'),{transactionResponse:output});
               return output;
             });
           });
           res.status(response.status);
           if(response.json) res.json(response.data);else res.send(response.data);
-        } catch(err) {next(err);}
+        } catch(err) {
+          if(err.transactionResponse){const out=err.transactionResponse;res.status(out.status);if(out.json)res.json(out.data);else res.send(out.data);}
+          else next(err);
+        }
       });
     };
   }

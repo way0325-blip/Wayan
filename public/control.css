@@ -30,3 +30,6 @@ body {background:radial-gradient(ellipse at top right,#173b3c 0,transparent 50%)
 button:focus-visible,a:focus-visible {outline:2px solid var(--cyan);outline-offset:4px;}
 @media(max-width:1100px) {.control-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.control-split{grid-template-columns:1fr;}}
 @media(max-width:600px) {.control-hero{align-items:flex-start;flex-direction:column;gap:14px;padding:14px 0;}.control-grid{gap:10px;}.control-metric{padding:15px;}.control-metric strong{font-size:26px;}.main{padding:16px;}}
+
+#fleetCaseDetails dt{font-weight:bold;margin-top:12px;color:var(--muted)}#fleetCaseDetails dd{margin:4px 0;white-space:pre-wrap}#fleetCaseForm textarea{width:100%;min-height:80px;background:var(--bg);color:var(--text);padding:12px;border:1px solid var(--line);border-radius:10px;font:inherit}#fleetOps table td{max-width:360px;white-space:normal;overflow-wrap:anywhere}
+@media print{body>*{display:none!important}body>#fleetCaseModal{display:block!important;position:static;background:white;color:black;padding:0}#fleetCaseModal .modal-box{max-width:none;width:100%;max-height:none;overflow:visible;background:white;border:0;color:black;box-shadow:none}#fleetCaseModal button,#fleetCaseModal form{display:none!important}#fleetCaseDetails dt{color:#333}#fleetCaseModal small{color:#555}}

@@ -1,5 +1,7 @@
 # Wayan — 港區星際運輸調度中心
 
+新增測試功能：[夥伴車隊營運、LINE 多群組與 Google Sheets](docs/PARTNER-FLEETS.md)。持續雲端寫入與真實 LINE 群組仍需獨立測試授權及 HTTPS Webhook，沒有部署正式環境。
+
 > 本開發分支已加入「Wayan 個人營運控制平台＋安全 LINE 司機 Bot」測試版本。**只能連線獨立的 `wayan-staging-db`，禁止部署正式環境。** 新的啟動、API、測試與未完成項目請先閱讀 [測試平台說明](docs/STAGING-PLATFORM.md)。下方保留原版文件供架構沿革參考，其中原本的資料庫名稱、預設展示密碼及群組回報方式不適用本分支。
 
 Node.js + Express + PostgreSQL 全端版本,基於原本的靜態 HTML 展示版擴充而成。
