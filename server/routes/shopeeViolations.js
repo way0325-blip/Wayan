@@ -5,7 +5,9 @@ const { requireAuth, requireRole } = require("../auth");
 const { logAction } = require("../audit");
 
 const router = express.Router();
-router.use(requireAuth);
+// 違規案件包含司機、車隊及事故資料；僅管理員與調度人員可進入此模組。
+// 主管覆核、條款管理、申訴裁決及罰款確認仍由各端點另外限制為 admin。
+router.use(requireAuth, requireRole("admin", "dispatcher"));
 
 const CATEGORIES = [
   "賣家上收作業規範", "WH-NDD 日常作業規範", "NDD 日常作業規範",
