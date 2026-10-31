@@ -96,8 +96,9 @@ router.post("/versions/:id/approve", requireRole("admin"), async (req, res, next
     const result = await tx(async (db) => {
       const v = await db.query("SELECT * FROM shopee_violation_rule_versions WHERE id=$1 FOR UPDATE", [req.params.id]);
       if (!v.rows.length) return { error: "找不到規則版本", status: 404 };
-      const pending = await db.query("SELECT COUNT(*)::int AS n FROM shopee_violation_rules WHERE version_id=$1 AND verification_status<>'已核對'", [req.params.id]);
-      if (pending.rows[0].n) return { error: "仍有未核對條款，不能核准", status: 409 };
+      const counts = await db.query("SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE verification_status<>'已核對')::int AS pending FROM shopee_violation_rules WHERE version_id=$1", [req.params.id]);
+      if (!counts.rows[0].total) return { error: "版本至少要有一筆條款才能核准", status: 409 };
+      if (counts.rows[0].pending) return { error: "仍有未核對條款，不能核准", status: 409 };
       const updated = await db.query(
         "UPDATE shopee_violation_rule_versions SET status='已核准',approved_by=$1,approved_at=NOW() WHERE id=$2 AND status IN ('草稿','待覆核') RETURNING *",
         [req.user.username, req.params.id]
@@ -166,6 +167,7 @@ router.post("/cases", async (req, res, next) => {
     res.status(201).json(result.row);
   } catch (e) { next(e); }
 });
+router.delete("/cases/:id", (req, res) => fail(res, "違規案件及歷程不得刪除", 405));
 router.get("/cases/:id/events", async (req, res, next) => {
   try {
     const exists = await pool.query("SELECT 1 FROM shopee_violation_cases WHERE id=$1", [req.params.id]);
@@ -180,9 +182,10 @@ router.post("/cases/:id/review", requireRole("admin"), async (req, res, next) =>
     const row = await tx(async (db) => {
       const current = await db.query("SELECT * FROM shopee_violation_cases WHERE id=$1 FOR UPDATE", [req.params.id]);
       if (!current.rows.length) return null;
+      const nextStatus = decision === "待確認" ? "待主管覆核" : "已覆核";
       const { rows } = await db.query(
-        "UPDATE shopee_violation_cases SET responsibility=$1,review_reason=$2,reviewed_by=$3,reviewed_at=NOW(),status='已覆核',updated_at=NOW() WHERE id=$4 RETURNING *",
-        [decision,reason,req.user.username,req.params.id]
+        "UPDATE shopee_violation_cases SET responsibility=$1,review_reason=$2,reviewed_by=$3,reviewed_at=NOW(),status=$4,updated_at=NOW() WHERE id=$5 RETURNING *",
+        [decision,reason,req.user.username,nextStatus,req.params.id]
       );
       await event(db, req.params.id, "主管責任覆核", decision + "：" + reason, req.user.username);
       return rows[0];
