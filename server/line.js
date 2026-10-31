@@ -42,16 +42,18 @@ function chunkText(text) {
   return chunks;
 }
 
-async function callLineApi(path, body) {
+async function callLineApi(path, body, retryKey) {
   const res = await fetch(`${API_BASE}${path}`, {
     signal: AbortSignal.timeout(4000),
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${ACCESS_TOKEN}`,
+      ...(retryKey ? {'X-Line-Retry-Key':retryKey} : {}),
     },
     body: JSON.stringify(body),
   });
+  if (res.status===409 && retryKey && res.headers?.get('x-line-accepted-request-id')) return;
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     throw new Error(`LINE API ${path} 失敗(${res.status}):${detail.slice(0, 300)}`);
@@ -64,13 +66,13 @@ async function replyMessage(replyToken, text) {
   await callLineApi("/message/reply", { replyToken, messages });
 }
 
-async function pushMessage(to, text) {
+async function pushMessage(to, text, options={}) {
   if (!isConfigured()) return;
   const chunks = chunkText(text);
   // LINE 一次最多 5 則訊息,超過的話分批呼叫
   for (let i = 0; i < chunks.length; i += 5) {
     const messages = chunks.slice(i, i + 5).map((t) => ({ type: "text", text: t }));
-    await callLineApi("/message/push", { to, messages });
+    await callLineApi("/message/push", { to, messages }, options.retryKey);
   }
 }
 

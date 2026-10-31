@@ -284,6 +284,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
 
     <button class="nav-btn active" data-page="dashboard">📊 今日儀表板</button>
     <button class="nav-btn" data-page="orders">📦 訂單與車趟</button>
+    <button class="nav-btn" data-page="fleetOps">🤝 夥伴車隊營運</button>
     <button class="nav-btn" data-page="shopee">🟢 蝦皮車隊需求</button>
     <button class="nav-btn" data-page="drivers">👨‍✈️ 司機管理</button>
     <button class="nav-btn" data-page="vehicles">🚚 車輛管理</button>
@@ -351,7 +352,17 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
       </div>
     </section>
 
-    <section id="lineControl" class="page">
+    <section id="fleetOps" class="page">
+  <div class="control-hero"><div><span class="eyebrow">WAYAN / PARTNER FLEETS</span><h1>各車隊，一起掌握。</h1><p>群組任務、異常回報與雲端紀錄，在同一處追蹤。</p></div><button class="action secondary" id="fleetOpsRefresh">重新整理</button></div>
+  <p id="fleetOpsMessage" class="control-notice" role="status" aria-live="polite"></p>
+  <div id="fleetKpis" class="control-grid"></div><p id="fleetConnection" class="hint"></p>
+  <div class="panel"><h3>車隊名冊與 LINE 群組</h3><div class="control-toolbar"><input id="fleetSearch" aria-label="搜尋車隊" placeholder="搜尋名稱或車隊編號" style="max-width:300px"><button class="action secondary" id="fleetSearchBtn">搜尋</button><button class="action" id="fleetCreate">新增車隊</button></div><p class="hint">同一個官方帳號可加入多個群組。每個群組只對應一個車隊，群組內成員均可操作該車隊任務。</p><p id="fleetBindInstructions" class="control-notice control-code"></p><div id="fleetDirectory" class="table-wrap"></div><button id="fleetMore" class="action secondary hidden">載入更多車隊</button></div><br>
+  <div class="control-toolbar"><label for="fleetFilter">篩選車隊</label><select id="fleetFilter" style="max-width:300px"><option value="">全部車隊</option></select><a id="fleetSheetLink" class="action secondary hidden" target="_blank" rel="noopener noreferrer">開啟 Google Sheets</a></div>
+  <div class="panel"><div class="control-toolbar"><h3>任務通知與承接進度</h3><button class="action" id="fleetTaskCreate">建立車隊任務</button></div><div id="fleetTaskList" class="table-wrap"></div><button class="action secondary hidden" id="fleetTaskMore">載入更多任務</button></div><br>
+  <div class="panel"><div class="control-toolbar"><h3>異常回報與處理紀錄</h3><select id="fleetCaseStatus" aria-label="案件狀態" style="max-width:200px"><option value="">全部狀態</option><option>待處理</option><option>處理中</option><option>待確認</option><option>已結案</option></select></div><div id="fleetCaseList" class="table-wrap"></div><button class="action secondary hidden" id="fleetCaseMore">載入更多案件</button></div><br>
+  <div class="panel admin-only hidden"><h3>雲端表單與傳送紀錄</h3><p class="hint">Google 連線可用來建立表單；平台持續自動寫入還需要專用後端授權。任務及回報會先保存於平台，待設定完成後補送。</p><div class="control-toolbar"><input id="fleetSheetId" aria-label="Google Sheets 目標" placeholder="貼上 Wayan 車隊營運紀錄的網址" style="max-width:520px"><button class="action secondary" id="fleetSheetSave">儲存試算表</button><button class="action secondary" id="fleetSheetResync">同步全部紀錄</button></div><div id="fleetJobs" class="table-wrap"></div></div>
+  </section>
+  <section id="lineControl" class="page">
       <div class="control-hero"><div><span class="eyebrow">WAYAN / LINE DRIVER ASSISTANT</span><h1>司機的行動工作入口</h1><p>綁定身分、查詢任務、回報現場狀況。</p></div><button class="action secondary" id="botRefresh">更新狀態</button></div>
       <p id="botError" class="control-error" role="alert"></p>
       <div class="control-split"><div class="panel"><h3>綁定司機</h3><p id="botConfigured" role="status">等待檢查</p><ol class="bot-steps"><li>選擇司機，產生十分鐘有效的一次性綁定碼。</li><li>將代碼私下交給本人，請司機加測試官方帳號好友。</li><li>司機私訊輸入「綁定 代碼」，完成後即可查詢自己的任務。</li></ol><div class="control-toolbar"><select id="botDriver" aria-label="選擇綁定司機"></select><button class="action" id="botGenerate">產生綁定碼</button></div><p id="botCode" class="control-code control-notice" role="status"></p></div>
@@ -829,7 +840,13 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
   </div>
 </div>
 
+
+<div id="fleetProfileModal" class="modal hidden"><div class="modal-box"><div class="modal-head"><h3>夥伴車隊資料</h3><button class="close" onclick="closeModal('fleetProfileModal')">×</button></div><form id="fleetProfileForm"><input type="hidden" id="fleetProfileId"><div class="field"><label for="fleetName">車隊名稱</label><input id="fleetName" required maxlength="50"></div><div class="field"><label for="fleetContact">聯絡窗口</label><input id="fleetContact" maxlength="50"></div><div class="field"><label for="fleetPhone">電話</label><input id="fleetPhone" maxlength="30"></div><div class="field"><label for="fleetCapacity">每日車數上限（0 表示不限）</label><input id="fleetCapacity" type="number" min="0" max="1000" required></div><div class="field"><label for="fleetProfileStatus">狀態</label><select id="fleetProfileStatus"><option>啟用</option><option>停用</option></select></div><button class="primary">儲存車隊</button></form></div></div>
+<div id="fleetTaskModal" class="modal hidden"><div class="modal-box"><div class="modal-head"><h3>建立車隊任務</h3><button class="close" onclick="closeModal('fleetTaskModal')">×</button></div><form id="fleetTaskForm"><input type="hidden" id="fleetTaskRequest"><div class="field"><label for="fleetTaskFleet">車隊</label><select id="fleetTaskFleet" required></select></div><div class="field"><label for="fleetTaskTitle">任務名稱</label><input id="fleetTaskTitle" required maxlength="100"></div><div class="field"><label for="fleetTaskDate">作業日期</label><input id="fleetTaskDate" type="date" required></div><div class="field"><label for="fleetTaskOrigin">起點</label><input id="fleetTaskOrigin" required maxlength="100"></div><div class="field"><label for="fleetTaskDestination">終點</label><input id="fleetTaskDestination" required maxlength="100"></div><div class="field"><label for="fleetTaskType">車型</label><input id="fleetTaskType" required maxlength="50" placeholder="例如：11T、曳引車"></div><div class="field"><label for="fleetTaskCount">要求車數</label><input id="fleetTaskCount" type="number" min="1" max="200" required></div><div class="field"><label for="fleetTaskNote">備註</label><input id="fleetTaskNote" maxlength="500"></div><button class="primary">建立任務</button></form></div></div>
+<div id="fleetCaseModal" class="modal hidden"><div class="modal-box"><div class="modal-head"><h3 id="fleetCaseNumber">異常回報單</h3><button class="close" onclick="closeModal('fleetCaseModal')">×</button></div><div id="fleetCaseDetails" class="control-notice"></div><button class="action secondary" type="button" onclick="window.print()">列印回報單</button><h4>處理紀錄</h4><div id="fleetCaseHistory"></div><form id="fleetCaseForm"><div class="field"><label for="fleetCaseNext">下一個狀態</label><select id="fleetCaseNext"></select></div><div class="field"><label for="fleetCaseHandler">處理人</label><input id="fleetCaseHandler" maxlength="50" required></div><div class="field"><label for="fleetCaseResolution">處理結果（結案必填）</label><textarea id="fleetCaseResolution" maxlength="1000"></textarea></div><div class="field"><label for="fleetCaseNote">本次處理說明</label><textarea id="fleetCaseNote" maxlength="1000" required></textarea></div><button class="primary">儲存處理紀錄</button></form></div></div>
+
 <script src="/control.js"></script>
+<script src="/fleets.js"></script>
 <script>
 const todayEl = document.getElementById("today");
 todayEl.textContent = new Date().toLocaleDateString("zh-TW", {
@@ -2476,6 +2493,7 @@ document.querySelectorAll(".nav-btn[data-page]").forEach(button => {
       shopee: "蝦皮店到店・車隊需求",
       users: "後台管理",
       lineControl: "LINE 司機平台",
+      fleetOps: "夥伴車隊營運管理",
     };
     document.getElementById("pageTitle").textContent = titles[button.dataset.page];
     if (button.dataset.page === "schedule") loadSchedule();

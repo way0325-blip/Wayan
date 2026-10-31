@@ -260,7 +260,9 @@ async function fleetUsedTrucks(db, fleetId, date, excludeRouteId) {
      WHERE a.fleet_id = $1 AND r.service_date = $2 AND a.status <> '已拒絕' AND a.route_id <> $3`,
     [fleetId, date, excludeRouteId]
   );
-  return rows[0].used;
+    const manual=await db.query(`SELECT COALESCE(SUM(CASE WHEN status='待回覆' THEN requested_trucks ELSE confirmed_trucks END),0)::int AS used
+      FROM fleet_work_orders WHERE fleet_id=$1 AND service_date=$2 AND status NOT IN ('已拒絕','已取消')`,[fleetId,date]);
+    return rows[0].used+manual.rows[0].used;
 }
 
 function serializeCandidate(row, usedElsewhere) {
@@ -625,12 +627,17 @@ router.patch(
 
 router.delete("/fleets/:id", requireRole("admin"), async (req, res, next) => {
   try {
+    const protectedRows=await pool.query(`SELECT 1 FROM fleet_work_orders WHERE fleet_id=$1
+      UNION ALL SELECT 1 FROM line_fleet_groups WHERE fleet_id=$1
+      UNION ALL SELECT 1 FROM fleet_sheet_rows WHERE sheet_key='fleets' AND entity_id=$1 LIMIT 1`,[req.params.id]);
+    if(protectedRows.rowCount)return res.status(409).json({error:'車隊已有任務、群組或雲端歷程，請改為停用以保留紀錄'});
     const used = await pool.query("SELECT 1 FROM shopee_assignments WHERE fleet_id = $1 LIMIT 1", [req.params.id]);
     if (used.rows.length) {
       return res.status(409).json({ error: "此車隊已有承接紀錄,不能刪除,請改為「停用」" });
     }
     const result = await pool.query("DELETE FROM partner_fleets WHERE id = $1 RETURNING name", [req.params.id]);
     if (!result.rowCount) return res.status(404).json({ error: "找不到此車隊" });
+    await pool.query("UPDATE fleet_delivery_jobs SET status='cancelled',error_code='RECORD_DELETED',locked_until=NULL,updated_at=NOW() WHERE job_key=$1",['sheet:fleets:'+req.params.id]);
     await logAction(req, "刪除", "蝦皮車隊", req.params.id, result.rows[0].name);
     res.status(204).send();
   } catch (err) {
