@@ -43,6 +43,10 @@ test.after(async () => {
 
 test("violation rules, cases, review, appeals and manual fines enforce workflow", async () => {
   assert.equal((await request("GET", "/api/shopee/violations/cases", null)).status, 401);
+  assert.equal((await request("GET", "/api/shopee/violations/versions", dispatcher)).status, 403);
+  assert.equal((await request("POST", "/api/shopee/violations/versions", dispatcher, {
+    version_name: "dispatcher-forbidden", source_document: "test.pdf", effective_date: "2026-01-01",
+  })).status, 403);
 
   const version = await request("POST", "/api/shopee/violations/versions", admin, {
     version_name: "test-version", source_document: "測試規範.pdf", effective_date: "2026-01-01",
@@ -73,6 +77,9 @@ test("violation rules, cases, review, appeals and manual fines enforce workflow"
   });
   assert.equal(createdCase.status, 201);
   assert.equal(createdCase.data.status, "待主管覆核");
+  const dispatcherCases = await request("GET", "/api/shopee/violations/cases", dispatcher);
+  assert.equal(dispatcherCases.status, 200);
+  assert.ok(dispatcherCases.data.some(x => x.id === createdCase.data.id));
 
   assert.equal((await request("POST", "/api/shopee/violations/cases/" + createdCase.data.id + "/review", dispatcher, { decision: "全責", reason: "測試" })).status, 403);
   assert.equal((await request("POST", "/api/shopee/violations/cases/" + createdCase.data.id + "/review", admin, { decision: "全責", reason: "" })).status, 400);
