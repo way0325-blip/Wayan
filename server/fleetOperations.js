@@ -62,6 +62,8 @@ async function handleFleetGroupEvent(db,event,eventId){
   if(!fleet) return null;
   if(fleet.status!=='啟用') return '車隊已停用，請聯絡管理員。';
   const actor={username:`LINE車隊:${fleet.id}:${userId.slice(-6)}`,role:'fleet'};
+  const shopeeReply=await require('./shopeeCheckins').handleShopeeGroup(db,text,fleet,actor,eventId);
+  if(shopeeReply!==null)return shopeeReply;
   if(/^(車隊任務|任務)$/.test(text)){
     const tasks=(await db.query(`SELECT * FROM fleet_work_orders WHERE fleet_id=$1 AND status NOT IN ('已完成','已取消','已拒絕') ORDER BY service_date,id LIMIT 20`,[fleet.id])).rows;
     return `【${fleet.name} 任務】\n`+(tasks.map(t=>`${taskNumber(t.id)} ${t.service_date} ${t.origin}→${t.destination} ${t.requested_trucks}車 ${t.status}`).join('\n')||'目前沒有待處理任務。');

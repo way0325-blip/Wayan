@@ -22,6 +22,7 @@
       const rate=s.port.total?Math.round(s.port.done/s.port.total*100):0;
       set('completionText',rate+'%');el('completionBar').style.width=rate+'%';
       set('controlFailed',s.failed_events);
+      set('controlViolations',s.pendingViolations);
       el('controlIncidentList').innerHTML=incidents.filter(i=>i.status==='待處理').slice(0,12).map(i=>`<div class="incident-row"><strong>${escape(i.kind)}</strong> · ${escape(i.order_id)}<br>${escape(i.detail)}<br><small>司機 ${escape(i.driver_id)} · ${escape(i.vehicle_id||'無車籍')} · ${escape(new Date(i.created_at).toLocaleString('zh-TW',{timeZone:'Asia/Taipei'}))}</small>${isAdmin()?`<br><button class="action secondary small" data-resolve="${escape(i.id)}">登記處理結果</button>`:''}</div>`).join('') || '<div class="empty">目前沒有待處理異常</div>';
       set('controlError','');
     } catch(err) {set('controlError','更新失敗：'+err.message);}
@@ -52,8 +53,8 @@
           const frame=buffer.slice(0,end);buffer=buffer.slice(end+2);
           if(frame.includes('event: expired')) {logout();return;}
           if(frame.includes('event: offline')) sync('offline','同步中斷 · 正在重連');
-          if(frame.includes('event: ready')) {sync('online','● 即時同步已連線');scheduleRefresh();}
-          if(frame.includes('event: refresh')) scheduleRefresh();
+          if(frame.includes('event: ready')) {sync('online','● 即時同步已連線');scheduleRefresh();document.dispatchEvent(new Event('wayan:refresh'));}
+          if(frame.includes('event: refresh')) {scheduleRefresh();document.dispatchEvent(new Event('wayan:refresh'));}
         }
       }
     } catch(err) {if(err.name==='AbortError') return;}

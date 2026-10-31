@@ -21,7 +21,7 @@ test('incremental migration can run twice without losing operational data',async
   const before=(await pool.query('SELECT count(*)::int AS n FROM orders')).rows[0].n;
   await migrate(pool);await migrate(pool);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM orders')).rows[0].n,before);
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM schema_migrations')).rows[0].n,2);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM schema_migrations')).rows[0].n,3);
 });
 test('summary requires authentication and validates calendar dates',async()=>{
   assert.equal((await api('GET','/api/control/summary',undefined,null)).status,401);
@@ -37,7 +37,7 @@ test('today means the Taiwan service day; route demand is not multiplied by assi
   const s=(await api('GET','/api/control/summary')).data;
   assert.equal(s.port.total,1);assert.equal(s.port.pending,1);assert.equal(Number(s.shopee.required),5);
   assert.equal(Number(s.shopee.confirmed),2);assert.equal(Number(s.shopee.pending),2);assert.equal(Number(s.shopee.shortage),3);
-  assert.equal(s.pendingViolations,null);
+  assert.equal(s.pendingViolations,0);
 });
 test('simultaneous dispatches cannot reserve one driver and vehicle twice',async()=>{
   const payload={ship:'ship',container:'NEW',from:'A',to:'B',time:todayInTaipei()+'T10:00',size:'20 呎',dispatchType:'CY',carrier:'陽明'};

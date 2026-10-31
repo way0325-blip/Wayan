@@ -28,8 +28,9 @@ router.get('/summary', async (req,res,next) => {
       (SELECT json_build_object('total',count(*),'available',count(*) FILTER(WHERE status='可用' AND maintenance >= $1 AND (inspection_date IS NULL OR inspection_date='' OR inspection_date >= $1))) FROM vehicles) AS vehicles,
       (SELECT count(*)::int FROM operational_incidents WHERE status='待處理') AS open_incidents,
       (SELECT count(DISTINCT order_id)::int FROM operational_incidents WHERE status='待處理' AND order_id IS NOT NULL) AS abnormal_trips,
-      (SELECT count(*)::int FROM line_events WHERE status='failed' OR delivery_status='failed') AS failed_events`, [date])).rows[0];
-    res.set('Cache-Control','no-store').json({...result,date,updatedAt:new Date().toISOString(),pendingViolations:null});
+      (SELECT count(*)::int FROM line_events WHERE status='failed' OR delivery_status='failed') AS failed_events,
+      (SELECT count(*)::int FROM penalty_cases WHERE status IN ('待覆核','申訴中')) AS "pendingViolations"`, [date])).rows[0];
+    res.set('Cache-Control','no-store').json({...result,date,updatedAt:new Date().toISOString()});
   } catch(err) {next(err);}
 });
 router.get('/incidents', async(req,res,next)=>{

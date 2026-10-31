@@ -15,6 +15,22 @@ const clean=(v,max)=>typeof v==='string' && v.trim().length<=max?v.trim():null;
 const idOk=id=>/^\d{1,15}$/.test(id||'');
 const statuses=['待回覆','已確認','已拒絕','執行中','已完成','已取消'];
 const caseStatuses=['待處理','處理中','待確認','已結案'];
+router.get('/groups',admin,async(req,res,next)=>{try{
+  res.set('Cache-Control','no-store').json((await pool.query(`SELECT r.*,g.fleet_id,f.name AS fleet_name,
+    (SELECT count(*)::int FROM line_events e WHERE e.payload->'source'->>'groupId'=r.group_id AND (e.status='failed' OR e.delivery_status='failed')) AS failed_events,
+    (SELECT count(*)::int FROM fleet_delivery_jobs j WHERE j.payload->>'groupId'=r.group_id AND j.status='failed') AS failed_notifications
+    FROM line_group_registry r LEFT JOIN line_fleet_groups g ON g.group_id=r.group_id LEFT JOIN partner_fleets f ON f.id=g.fleet_id ORDER BY r.label,r.group_id LIMIT 1000`)).rows);
+}catch(e){next(e);}});
+router.post('/groups/import',admin,async(req,res,next)=>{try{
+  const rows=req.body?.groups;
+  if(!Array.isArray(rows)||!rows.length||rows.length>100||rows.some(g=>!/^C[0-9a-f]{32}$/i.test(g.groupId||'')||!clean(g.name,100)))return res.status(400).json({error:'每次限 1～100 群組，需填名稱及 C 開頭的 33 碼 LINE Group ID；邀請連結不是 Group ID'});
+  for(const g of rows)await pool.query(`INSERT INTO line_group_registry(group_id,label,created_by) VALUES($1,$2,$3) ON CONFLICT(group_id) DO UPDATE SET label=EXCLUDED.label`,[g.groupId,g.name.trim(),req.user.username]);
+  await logAction(req,'匯入群組清單','LINE群組','',`${rows.length} 筆；保留原驗證狀態`);res.json({imported:rows.length});
+}catch(e){next(e);}});
+router.post('/fleets/:id/group',admin,async(req,res,next)=>{try{
+  const error=await require('../lineGroups').bindSelectedGroup(pool,req.body?.groupId,req.params.id,req.user);
+  if(error)return res.status(409).json({error});res.json({bound:true});
+}catch(e){next(e);}});
 router.get('/status',async(req,res,next)=>{
   try{
     const counts=(await pool.query(`SELECT
@@ -163,7 +179,7 @@ router.put('/sheet-target',admin,async(req,res,next)=>{
 });
 router.post('/sheet-resync',admin,async(req,res,next)=>{
   try{
-    for(const [key,table] of [['fleets','partner_fleets'],['tasks','fleet_work_orders'],['incidents','fleet_incidents'],['history','fleet_incident_history']]){
+    for(const [key,table] of [['fleets','partner_fleets'],['tasks','fleet_work_orders'],['incidents','fleet_incidents'],['history','fleet_incident_history'],['rules','penalty_rules'],['penalties','penalty_cases'],['penaltyHistory','penalty_case_history']]){
       await pool.query(`INSERT INTO fleet_delivery_jobs(id,job_key,kind,payload)
         SELECT gen_random_uuid(),'sheet:'||$1||':'||id::text,'sheet',jsonb_build_object('key',$1::text,'id',id::text) FROM ${table} WHERE TRUE
         ON CONFLICT(job_key) DO UPDATE SET revision=fleet_delivery_jobs.revision+1,

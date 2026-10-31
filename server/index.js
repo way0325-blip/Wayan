@@ -103,6 +103,9 @@ app.use("/api/shopee", shopeeRoutes);
 app.use("/api/control", require("./routes/control"));
 app.use("/api/line/admin", require("./routes/lineAdmin"));
 app.use('/api/fleet-ops',require('./routes/fleetOps'));
+app.use('/api/penalty-rules',require('./routes/penaltyRules'));
+app.use('/api/penalty-cases',require('./routes/penaltyCases'));
+app.use('/api/shopee-live',require('./routes/shopeeLive'));
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 app.use('/api', (req,res)=>res.status(404).json({error:'找不到 API'}));

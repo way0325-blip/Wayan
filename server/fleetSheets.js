@@ -32,6 +32,17 @@ async function google(path,options={}){
 }
 const serial=value=>value==null?'':(new Date(value).getTime()+8*3600000)/86400000+25569;
 async function rowValues(key,id){
+  if(key==='rules'){
+    const r=(await pool.query('SELECT * FROM penalty_rules WHERE id=$1',[id])).rows[0];if(!r)throw error('RECORD_NOT_FOUND');
+    return ['R'+r.id,r.rule_code,r.version,r.title,Number(r.points),r.proposed_amount===null?'':Number(r.proposed_amount),r.status,r.effective_date||'待確認',r.terms,r.source,r.verified_by||'',serial(r.created_at)];
+  }
+  if(key==='penalties'){
+    const r=(await pool.query('SELECT c.*,f.name AS fleet_name FROM penalty_cases c JOIN partner_fleets f ON f.id=c.fleet_id WHERE c.id=$1',[id])).rows[0];if(!r)throw error('RECORD_NOT_FOUND');
+    return ['P'+r.id,r.fleet_name,'R'+r.rule_id,r.occurred_on,r.status,r.points===null?'':Number(r.points),r.amount===null?'':Number(r.amount),r.responsibility,r.appeal,r.reviewer||'',r.decision,serial(r.updated_at)];
+  }
+  if(key==='penaltyHistory'){
+    const r=(await pool.query('SELECT * FROM penalty_case_history WHERE id=$1',[id])).rows[0];if(!r)throw error('RECORD_NOT_FOUND');return ['PH'+r.id,'P'+r.case_id,serial(r.created_at),r.actor,r.action,r.note];
+  }
   if(key==='fleets'){
     const r=(await pool.query('SELECT f.*,g.bound_at FROM partner_fleets f LEFT JOIN line_fleet_groups g ON g.fleet_id=f.id WHERE f.id=$1',[id])).rows[0];
     if(!r) throw error('RECORD_NOT_FOUND');return [r.id,r.name,r.contact_name,r.phone,r.daily_capacity,r.status,r.bound_at?'已綁定':'未綁定',serial(new Date())];
