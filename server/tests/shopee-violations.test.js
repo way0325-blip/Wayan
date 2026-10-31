@@ -108,5 +108,5 @@ test("violation rules, cases, review, appeals and manual fines enforce workflow"
   const events = await request("GET", "/api/shopee/violations/cases/" + createdCase.data.id + "/events", dispatcher);
   assert.equal(events.status, 200);
   assert.ok(events.data.length >= 5);
-  assert.equal((await request("DELETE", "/api/shopee/violations/cases/" + createdCase.data.id, admin)).status, 404);
+  assert.equal((await request("DELETE", "/api/shopee/violations/cases/" + createdCase.data.id, admin)).status, 405);
 });
