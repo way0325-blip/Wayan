@@ -284,6 +284,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
     <button class="nav-btn active" data-page="dashboard">📊 今日儀表板</button>
     <button class="nav-btn" data-page="orders">📦 訂單與車趟</button>
     <button class="nav-btn" data-page="shopee">🟢 蝦皮車隊需求</button>
+    <button class="nav-btn" data-page="violations">📋 蝦皮違規管理</button>
     <a class="nav-btn" style="display:block;box-sizing:border-box;text-decoration:none" href="/shopee-violations.html">⚠️ 蝦皮違規管理</a>
     <button class="nav-btn" data-page="drivers">👨‍✈️ 司機管理</button>
     <button class="nav-btn" data-page="vehicles">🚚 車輛管理</button>
@@ -458,6 +459,12 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
           </div>
           <div id="shopeeFleetTable" class="table-wrap"></div>
         </div>
+      </div>
+    </section>
+
+    <section id="violations" class="page">
+      <div class="panel" style="padding:0;overflow:hidden">
+        <iframe src="/shopee-violations.html" title="蝦皮違規管理" style="display:block;width:100%;height:calc(100vh - 150px);min-height:720px;border:0;background:#f3f5f9"></iframe>
       </div>
     </section>
 
@@ -2441,6 +2448,7 @@ document.querySelectorAll(".nav-btn[data-page]").forEach(button => {
       vehicles: "車輛資料管理",
       schedule: "班表",
       shopee: "蝦皮店到店・車隊需求",
+      violations: "蝦皮違規管理",
       users: "後台管理",
     };
     document.getElementById("pageTitle").textContent = titles[button.dataset.page];
