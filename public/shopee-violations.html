@@ -69,19 +69,19 @@ if(role!=="admin") { $("ruleForm").classList.add("hidden"); $("versionForm").cla
 document.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll("[data-tab],.panel").forEach(x=>x.classList.remove("active"));b.classList.add("active");$(b.dataset.tab).classList.add("active");}));
 async function load(){
  try{
-  const [meta,rs,cs,ds,os,sh]=await Promise.all([api("/meta"),api("/rules"),api("/cases"),fetch("/api/shopee/fleets",{headers:{Authorization:"Bearer "+token}}).then(r=>r.ok?r.json():[]),fetch("/api/orders",{headers:{Authorization:"Bearer "+token}}).then(r=>r.ok?r.json():[]),api("/../shopee/routes").catch(()=>[])]);
+  const [meta,rs,cs,ds,os,sh,dr]=await Promise.all([api("/meta"),api("/rules"),api("/cases"),fetch("/api/shopee/fleets",{headers:{Authorization:"Bearer "+token}}).then(r=>r.ok?r.json():[]),fetch("/api/orders",{headers:{Authorization:"Bearer "+token}}).then(r=>r.ok?r.json():[]),fetch("/api/shopee/routes",{headers:{Authorization:"Bearer "+token}}).then(r=>r.ok?r.json():[]),fetch("/api/drivers",{headers:{Authorization:"Bearer "+token}}).then(r=>r.ok?r.json():[])]);
   categories=meta.categories;rules=rs;cases=cs;
   $("ruleCategory").innerHTML=categories.map(x=>'<option>'+esc(x)+'</option>').join("");
   $("caseRule").innerHTML=rules.filter(x=>x.verification_status==="已核對"&&x.version_status==="已核准").map(x=>'<option value="'+x.id+'">'+esc(x.rule_code+"｜"+x.category+"｜"+x.rule_text.slice(0,45))+'</option>').join("");
   const fleetRows=Array.isArray(ds)?ds:(ds.fleets||[]);$("fleet").innerHTML='<option value="">不指定車隊</option>'+fleetRows.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join("");
-  $("driver").innerHTML='<option value="">不指定司機</option>'+osDriversPlaceholder();
+  $("driver").innerHTML='<option value="">不指定司機</option>'+dr.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join("");
   $("order").innerHTML='<option value="">不指定港口車趟</option>'+os.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.id+"｜"+(x.container||""))+'</option>').join("");
   $("route").innerHTML='<option value="">不指定蝦皮路線</option>'+(Array.isArray(sh)?sh:[]).map(x=>'<option value="'+esc(x.id)+'">'+esc(x.origin+"→"+x.destination+"｜"+x.serviceDate)+'</option>').join("");
   renderCases();renderRules();
   if(role==="admin"){versions=await api("/versions");renderVersions();}
  }catch(e){msg(e.message,true);}
 }
-function osDriversPlaceholder(){return "";}
+
 function renderCases(){
  const q=$("caseSearch").value.toLowerCase(),rows=cases.filter(x=>(x.case_no+" "+(x.fleet_name||"")+" "+(x.driver_name||"")+" "+x.description).toLowerCase().includes(q));
  $("caseTable").innerHTML=rows.length?'<table><thead><tr><th>案件編號／時間</th><th>車隊／司機</th><th>條款</th><th>關聯車趟</th><th>責任／狀態</th><th>操作</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+esc(x.case_no)+'<br><small>'+esc(x.event_at)+'</small></td><td>'+esc(x.fleet_name||"—")+'<br>'+esc(x.driver_name||"—")+'</td><td>'+esc(x.rule_code)+'<br>'+esc(x.category)+'</td><td>'+esc(x.order_id||x.shopee_route_id||"—")+'</td><td>'+esc(x.responsibility||"待覆核")+'<br>'+esc(x.status)+'</td><td class="actions">'+(role==="admin"?'<button data-review="'+x.id+'">主管覆核</button><button data-fine="'+x.id+'">登記罰款</button>':'')+'<button data-appeal="'+x.id+'">提出申訴</button><button data-events="'+x.id+'">查看歷程</button></td></tr>').join("")+'</tbody></table>':'<div class="empty">目前沒有案件</div>';
