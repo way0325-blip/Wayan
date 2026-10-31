@@ -1,5 +1,9 @@
 (() => {
   const el=id=>document.getElementById(id),esc=v=>escapeHTML(v);
+  async function groups(){if(!isAdmin())return;const rows=await api('/api/fleet-ops/groups');
+    el('fleetGroupChoice').innerHTML='<option value="">暫不綁定／保留原綁定</option>'+rows.filter(g=>g.bot_present&&g.last_seen_at&&!g.fleet_id).map(g=>'<option value="'+esc(g.group_id)+'">'+esc(g.label||g.group_id)+'</option>').join('');
+    el('groupDirectory').innerHTML=rows.length?'<table><thead><tr><th>群組名稱／Group ID</th><th>對應車隊</th><th>Bot 狀態</th><th>最近事件</th><th>失敗事件／通知</th></tr></thead><tbody>'+rows.map(g=>'<tr><td>'+esc(g.label||'尚未命名')+'<br><small>'+esc(g.group_id)+'</small></td><td>'+esc(g.fleet_name||'尚未綁定')+'</td><td>'+(g.bot_present===null?'手動登記，未驗證':g.bot_present?'最近事件確認 Bot 在群組':'Bot 已離開')+'</td><td>'+esc(g.last_seen_at?new Date(g.last_seen_at).toLocaleString('zh-TW'):'尚未收到')+'<br>'+esc(g.last_event_type||'')+'</td><td>'+g.failed_events+'／'+g.failed_notifications+'</td></tr>').join('')+'</tbody></table>':'<div class="empty">尚無群組，可先登記或邀請 Bot。</div>';
+  }
   let fleetRows=[],fleetCursor=null,tasks=[],cases=[],taskCursor=null,caseCursor=null,selectedCase=null,loading=false;
   const date=v=>v?new Date(v).toLocaleString('zh-TW',{timeZone:'Asia/Taipei'}):'—';
   const jobErrors={GOOGLE_NOT_CONFIGURED:'尚未設定試算表寫入授權',LINE_NOT_CONFIGURED:'尚未設定測試 LINE 頻道',GOOGLE_AUTH_FAILED:'Google 授權無效或已過期',GOOGLE_PERMISSION_DENIED:'寫入帳號沒有這份試算表的權限',GOOGLE_KEY_INVALID:'後端 Google 金鑰格式無效',SHEET_HEADERS_CHANGED:'欄位名稱已變更，請恢復原始欄位',SHEET_ROW_CONFLICT:'資料列編號不符，已停止寫入以保護紀錄',SHEET_TAB_MISSING:'缺少必要工作表',TASK_OR_GROUP_CHANGED:'任務或綁定群組已變更，請重新確認',RETRY_WINDOW_EXPIRED:'LINE 安全重試期限已過，請人工核對通知',GOOGLE_RATE_LIMITED:'Google 請求頻率過高，稍後重試',GOOGLE_WRITE_FAILED:'Google 寫入失敗，請檢查試算表設定',RECORD_DELETED:'原始紀錄已移除',DELIVERY_FAILED:'傳送失敗，請稍後重試'};
@@ -55,13 +59,15 @@
   }
   document.addEventListener('click',event=>{
     const b=event.target.closest('button');if(!b)return;
-    if(b.dataset.page==='fleetOps')action(async()=>{await fleetList();await refresh();});
+    if(b.id==='groupReload'||b.dataset.page==='fleetOps')action(groups);
+    if(b.id==='groupImport')action(async()=>{const text=prompt('每行：群組名稱,Group ID（C開頭33碼）。不可使用邀請網址；最多100筆。');if(text===null)return;const rows=text.split(/\r?\n/).filter(v=>v.trim()).map(v=>{const i=v.lastIndexOf(',');return {name:v.slice(0,i).trim(),groupId:v.slice(i+1).trim()};});await api('/api/fleet-ops/groups/import',{method:'POST',body:JSON.stringify({groups:rows})});await groups();message('群組已登記；收到 LINE 簽章事件後可供選擇綁定。');});
+    if(b.dataset.page==='fleetOps')action(async()=>{await fleetList();await refresh();await groups();});
     if(b.id==='fleetSearchBtn')action(()=>fleetList());if(b.id==='fleetMore')action(()=>fleetList(true));
     if(b.id==='fleetOpsRefresh')action(refresh);if(b.id==='fleetTaskMore')action(()=>taskList(true));if(b.id==='fleetCaseMore')action(()=>caseList(true));
-    if(b.id==='fleetCreate'){
+    if(b.id==='fleetCreate'){groups().catch(e=>message(e.message));
       el('fleetName').value='';el('fleetContact').value='';el('fleetPhone').value='';el('fleetCapacity').value='0';el('fleetProfileStatus').value='啟用';el('fleetProfileId').value='';el('fleetProfileModal').classList.remove('hidden');
     }
-    if(b.dataset.fleetEdit){const f=fleetRows.find(f=>f.id===b.dataset.fleetEdit);el('fleetProfileId').value=f.id;el('fleetName').value=f.name;el('fleetContact').value=f.contact_name;el('fleetPhone').value=f.phone;el('fleetCapacity').value=f.daily_capacity;el('fleetProfileStatus').value=f.status;el('fleetProfileModal').classList.remove('hidden');}
+    if(b.dataset.fleetEdit){groups().catch(e=>message(e.message));const f=fleetRows.find(f=>f.id===b.dataset.fleetEdit);el('fleetProfileId').value=f.id;el('fleetName').value=f.name;el('fleetContact').value=f.contact_name;el('fleetPhone').value=f.phone;el('fleetCapacity').value=f.daily_capacity;el('fleetProfileStatus').value=f.status;el('fleetProfileModal').classList.remove('hidden');}
     if(b.id==='fleetTaskCreate'){el('fleetTaskForm').reset();el('fleetTaskDate').value=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Taipei'}).format(new Date());el('fleetTaskRequest').value=crypto.randomUUID();el('fleetTaskModal').classList.remove('hidden');}
     if(b.dataset.fleetBind)action(async()=>{
       const f=fleetRows.find(f=>f.id===b.dataset.fleetBind);
@@ -79,7 +85,7 @@
   });
   el('fleetFilter').addEventListener('change',()=>action(refresh));el('fleetCaseStatus').addEventListener('change',()=>action(()=>caseList()));
   el('fleetProfileForm').addEventListener('submit',event=>{event.preventDefault();action(async()=>{
-    const id=el('fleetProfileId').value,b={name:el('fleetName').value,contactName:el('fleetContact').value,phone:el('fleetPhone').value,dailyCapacity:Number(el('fleetCapacity').value),...(id?{status:el('fleetProfileStatus').value}:{})};
+    const id=el('fleetProfileId').value,b={name:el('fleetName').value,contactName:el('fleetContact').value,phone:el('fleetPhone').value,dailyCapacity:Number(el('fleetCapacity').value),...(isAdmin()&&el('fleetGroupChoice').value?{groupId:el('fleetGroupChoice').value}:{}),...(id?{status:el('fleetProfileStatus').value}:{})};
     await api('/api/shopee/fleets'+(id?'/'+encodeURIComponent(id):''),{method:id?'PATCH':'POST',body:JSON.stringify(b)});closeModal('fleetProfileModal');await fleetList();await refresh();
   });});
   el('fleetTaskForm').addEventListener('submit',event=>{event.preventDefault();action(async()=>{

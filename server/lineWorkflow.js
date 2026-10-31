@@ -12,6 +12,7 @@ function eventId(event) {
   })).digest('hex');
 }
 async function handleEvent(db, event, id) {
+  await require('./lineGroups').observeGroup(db,event);
   if (event.type === 'join') return '已加入 Wayan。車隊群組請向管理員取得一次性代碼，在群組輸入「車隊群組綁定 代碼」。司機本人請私訊機器人綁定。';
   if (event.type !== 'message' || event.message?.type !== 'text') return null;
   const fleetReply=await handleFleetGroupEvent(db,event,id);

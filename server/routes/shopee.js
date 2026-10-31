@@ -9,7 +9,7 @@ const { getSettings } = require("../settings");
 const router = express.Router();
 const {pool,withTransaction,logAction}=transactionalRouter(router,rawPool,870033);
 
-router.use(requireAuth);
+router.use(requireAuth,requireRole('admin','dispatcher'));
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_TRUCKS = 200;
@@ -231,6 +231,7 @@ router.patch("/routes/:id", async (req, res, next) => {
 
 router.delete("/routes/:id", requireRole("admin"), async (req, res, next) => {
   try {
+    if((await pool.query('SELECT 1 FROM shopee_fleet_reports c JOIN shopee_assignments a ON a.fleet_id=c.fleet_id JOIN shopee_routes r ON r.id=a.route_id AND r.service_date=c.service_date WHERE a.route_id=$1 LIMIT 1',[req.params.id])).rowCount)return res.status(409).json({error:'已有報到歷程，不可刪除路線'});
     const result = await pool.query("DELETE FROM shopee_routes WHERE id = $1 RETURNING origin, destination", [req.params.id]);
     if (!result.rowCount) return res.status(404).json({ error: "找不到此需求" });
     await logAction(req, "刪除", "蝦皮需求", req.params.id, `${result.rows[0].origin}→${result.rows[0].destination}`);
@@ -347,6 +348,11 @@ router.put("/routes/:id/assignments", async (req, res, next) => {
     if (invalid.length) return res.status(400).json({ error: "輸入驗證失敗,本次未寫入任何資料", details: invalid });
     if (problems.length) return res.status(409).json({ error: "分派失敗,本次未寫入任何資料", details: problems });
 
+    for(const p of plan){
+      const existing=(await pool.query('SELECT id,requested_trucks FROM shopee_assignments WHERE route_id=$1 AND fleet_id=$2',[route.id,p.fleetId])).rows[0];
+      if(existing&&existing.requested_trucks!==p.n&&Number(await require('../shopeeCheckins').reportedTotal(pool,p.fleetId,route.service_date))>0)return res.status(409).json({error:'已有報到紀錄，請先由管理員核對作廢後再變更需求趟數'});
+    }
+
     await withTransaction(async (client) => {
       for (const p of plan) {
         // 要求車數沒變就保留車隊的回覆;車數變了,車隊需要重新確認
@@ -384,6 +390,10 @@ router.patch("/assignments/:id", async (req, res, next) => {
 
     const route=(await pool.query('SELECT * FROM shopee_routes WHERE id=$1',[a.route_id])).rows[0];
     const fleet=(await pool.query('SELECT * FROM partner_fleets WHERE id=$1',[a.fleet_id])).rows[0];
+    const arrived=await require('../shopeeCheckins').reportedTotal(pool,a.fleet_id,route.service_date);
+    const others=Number((await pool.query("SELECT COALESCE(SUM(a.confirmed_trucks),0) n FROM shopee_assignments a JOIN shopee_routes r ON r.id=a.route_id WHERE a.fleet_id=$1 AND r.service_date=$2 AND a.id<>$3",[a.fleet_id,route.service_date,a.id])).rows[0].n);
+    const nextCount=req.body?.reset===true?0:Number(req.body?.confirmedTrucks);
+    if(Number.isInteger(nextCount)&&nextCount>=0&&arrived>others+nextCount)return res.status(409).json({error:'車隊當日承接總數不可低於累計已報到總數，請先由管理員核對更正'});
     if(req.body?.reset===true || Number(req.body?.confirmedTrucks)>0) {
       const used=await fleetUsedTrucks(pool,a.fleet_id,route.service_date,route.id);
       if(fleet.status!=='啟用' || (fleet.daily_capacity>0 && used+a.requested_trucks>fleet.daily_capacity)) return res.status(409).json({error:'車隊已停用或當日承接上限不足，無法恢復承接'});
@@ -415,6 +425,8 @@ router.patch("/assignments/:id", async (req, res, next) => {
 
 router.delete("/assignments/:id", async (req, res, next) => {
   try {
+    if(!/^\d{1,9}$/.test(req.params.id))return res.status(400).json({error:'分派編號無效'});
+    if((await pool.query('SELECT 1 FROM shopee_fleet_reports c JOIN shopee_assignments a ON a.fleet_id=c.fleet_id JOIN shopee_routes r ON r.id=a.route_id AND r.service_date=c.service_date WHERE a.id=$1 LIMIT 1',[req.params.id])).rowCount)return res.status(409).json({error:'已有報到歷程，不可刪除分派'});
     const result = await pool.query(
       `DELETE FROM shopee_assignments WHERE id = $1
        RETURNING route_id, fleet_id, requested_trucks`,
@@ -573,6 +585,7 @@ router.post("/fleets", validateBody(fleetSchema), async (req, res, next) => {
       [id, name, clean(req.body.contactName), clean(req.body.phone), lineLink, capacity, clean(req.body.note)]
     );
     await logAction(req, "新增", "蝦皮車隊", id, name);
+    if(req.body.groupId){const error=await require('../lineGroups').bindSelectedGroup(pool,req.body.groupId,id,req.user);if(error)return res.status(409).json({error});}
     res.status(201).json(serializeFleet(rows[0], []));
   } catch (err) {
     next(err);
@@ -618,6 +631,7 @@ router.patch(
       );
       const routes = await pool.query("SELECT * FROM fleet_routes WHERE fleet_id = $1 ORDER BY origin, destination", [cur.id]);
       await logAction(req, "修改", "蝦皮車隊", cur.id, name);
+      if(req.body.groupId){const error=await require('../lineGroups').bindSelectedGroup(pool,req.body.groupId,cur.id,req.user);if(error)return res.status(409).json({error});}
       res.json(serializeFleet(rows[0], routes.rows));
     } catch (err) {
       next(err);
@@ -628,6 +642,7 @@ router.patch(
 router.delete("/fleets/:id", requireRole("admin"), async (req, res, next) => {
   try {
     const protectedRows=await pool.query(`SELECT 1 FROM fleet_work_orders WHERE fleet_id=$1
+      UNION ALL SELECT 1 FROM penalty_cases WHERE fleet_id=$1
       UNION ALL SELECT 1 FROM line_fleet_groups WHERE fleet_id=$1
       UNION ALL SELECT 1 FROM fleet_sheet_rows WHERE sheet_key='fleets' AND entity_id=$1 LIMIT 1`,[req.params.id]);
     if(protectedRows.rowCount)return res.status(409).json({error:'車隊已有任務、群組或雲端歷程，請改為停用以保留紀錄'});
