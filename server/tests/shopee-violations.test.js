@@ -65,7 +65,8 @@ test("violation rules, cases, review, appeals and manual fines enforce workflow"
   assert.equal((await request("PATCH", "/api/shopee/violations/rules/" + rule.data.id + "/verify", admin, { verification_status: "已核對" })).status, 200);
   assert.equal((await request("POST", "/api/shopee/violations/versions/" + version.data.id + "/approve", admin, {})).status, 200);
 
-  const fleet = await pool.query("SELECT id FROM partner_fleets ORDER BY id LIMIT 1");
+  await pool.query("INSERT INTO partner_fleets(id,name,status) VALUES('TEST-FLEET','測試車隊','啟用') ON CONFLICT (id) DO NOTHING");
+  const fleet = await pool.query("SELECT id FROM partner_fleets WHERE id='TEST-FLEET'");
   const createdCase = await request("POST", "/api/shopee/violations/cases", dispatcher, {
     fleet_id: fleet.rows[0].id, rule_id: rule.data.id, event_at: "2026-02-01T09:00:00Z",
     description: "測試違規事件", evidence_note: "證據已由主管留存",
