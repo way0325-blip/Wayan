@@ -223,6 +223,8 @@ router.patch("/appeals/:id/decision", requireRole("admin"), async (req, res, nex
       const a = await db.query("SELECT * FROM shopee_violation_appeals WHERE id=$1 FOR UPDATE", [req.params.id]);
       if (!a.rowCount) return null;
       const u = await db.query("UPDATE shopee_violation_appeals SET status=$1,decision_reason=$2,reviewed_by=$3,reviewed_at=NOW() WHERE id=$4 RETURNING *", [status,reason,req.user.username,req.params.id]);
+      const caseStatus = status === "不成立" ? "已覆核" : "已結案";
+      await db.query("UPDATE shopee_violation_cases SET status=$1,updated_at=NOW() WHERE id=$2", [caseStatus,a.rows[0].case_id]);
       await event(db, a.rows[0].case_id, "申訴審查", status + "：" + reason, req.user.username);
       return u.rows[0];
     });
