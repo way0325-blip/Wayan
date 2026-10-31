@@ -137,8 +137,8 @@ router.post("/cases", async (req, res, next) => {
     const orderId = text(b.order_id, 100) || null, routeId = text(b.shopee_route_id, 100) || null;
     const assignmentId = b.assignment_id ? positiveId(b.assignment_id) : null, ruleId = positiveId(b.rule_id);
     const description = text(b.description, 3000), eventAt = b.event_at;
-    if ((!fleetId && !driverId) || !ruleId || !description || !eventAt || Number.isNaN(Date.parse(eventAt)))
-      return fail(res, "車隊或司機至少填一項，並填寫有效事件時間、已核准條款及事件描述");
+    if ((Boolean(fleetId) === Boolean(driverId)) || !ruleId || !description || !eventAt || Number.isNaN(Date.parse(eventAt)))
+      return fail(res, "車隊與自有司機必須擇一，並填寫有效事件時間、已核准條款及事件描述");
     if (orderId && (routeId || assignmentId)) return fail(res, "港口車趟與蝦皮需求關聯不可同時填寫");
     if (assignmentId && !routeId) return fail(res, "選擇蝦皮分派紀錄時必須同時指定蝦皮路線");
     const result = await tx(async (db) => {
@@ -149,9 +149,18 @@ router.post("/cases", async (req, res, next) => {
       if (!rule.rows.length) return { error: "只能使用事件日期有效、已核對且已核准的規則", status: 400 };
       if (fleetId && !(await db.query("SELECT 1 FROM partner_fleets WHERE id=$1", [fleetId])).rowCount) return { error: "找不到指定車隊", status: 400 };
       if (driverId && !(await db.query("SELECT 1 FROM drivers WHERE id=$1", [driverId])).rowCount) return { error: "找不到指定司機", status: 400 };
-      if (orderId && !(await db.query("SELECT 1 FROM orders WHERE id=$1", [orderId])).rowCount) return { error: "找不到指定港口車趟", status: 400 };
+      if (orderId) {
+        const order = await db.query("SELECT driver_id FROM orders WHERE id=$1", [orderId]);
+        if (!order.rowCount) return { error: "找不到指定港口車趟", status: 400 };
+        if (driverId && order.rows[0].driver_id && order.rows[0].driver_id !== driverId)
+          return { error: "所選司機與港口車趟派遣司機不一致", status: 400 };
+      }
       if (routeId && !(await db.query("SELECT 1 FROM shopee_routes WHERE id=$1", [routeId])).rowCount) return { error: "找不到指定蝦皮路線", status: 400 };
-      if (assignmentId && !(await db.query("SELECT 1 FROM shopee_assignments WHERE id=$1 AND route_id=$2", [assignmentId, routeId])).rowCount) return { error: "蝦皮分派紀錄與路線不符", status: 400 };
+      if (assignmentId) {
+        const assignment = await db.query("SELECT fleet_id FROM shopee_assignments WHERE id=$1 AND route_id=$2", [assignmentId, routeId]);
+        if (!assignment.rowCount || assignment.rows[0].fleet_id !== fleetId)
+          return { error: "蝦皮分派紀錄與路線或車隊不符", status: 400 };
+      }
       const caseNo = "SV" + new Date().toISOString().replace(/\D/g, "").slice(0, 14) + crypto.randomBytes(3).toString("hex").toUpperCase();
       const { rows } = await db.query(
         `INSERT INTO shopee_violation_cases
