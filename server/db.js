@@ -1,5 +1,6 @@
 const { Pool } = require("pg");
 const bcrypt = require("bcryptjs");
+const { initViolationSchema } = require("./violationSchema");
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
@@ -244,6 +245,7 @@ async function ensureHqContainerSize() {
 
 async function initDb() {
   await initSchema();
+  await initViolationSchema();
   await seedSettings();
   await ensureHqContainerSize();
   await seedIfEmpty();
