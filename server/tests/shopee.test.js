@@ -1,9 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 
-process.env.DATABASE_URL =
-  process.env.TEST_DATABASE_URL ||
-  "postgres://postgres:postgres@127.0.0.1:5432/wayan_dispatch_test";
+const {resetDatabase}=require('./stagingSetup');
 process.env.JWT_SECRET = "test-secret";
 process.env.ADMIN_USERNAME = "admin";
 process.env.ADMIN_PASSWORD = "1234";
@@ -40,6 +38,7 @@ async function newRoute(o, d, type, trucks, date = D) {
 const candidates = async (routeId) => (await api("GET", `/api/shopee/routes/${routeId}/candidates`)).data;
 
 test.before(async () => {
+  await resetDatabase();
   await pool.query("DROP TABLE IF EXISTS shopee_assignments, fleet_routes, partner_fleets, shopee_routes CASCADE");
   await pool.query("DROP TABLE IF EXISTS attendance_records, dispatch_staff, vehicle_maintenance_items, audit_logs, settings, line_daily_index, orders, drivers, vehicles, users CASCADE");
   await initDb();
@@ -208,14 +207,16 @@ test("assignments: request -> reply -> shortage math and status progression", as
   assert.strictEqual((await api("PATCH", "/api/shopee/assignments/999999", { confirmedTrucks: 1 })).status, 404);
 });
 
-test("over-confirmation never produces negative shortage", async () => {
+test("over-confirmation is rejected instead of silently exceeding demand", async () => {
   const a = await newFleet("超額A"); await newCap(a.id, "甲", "乙", "11T", 5);
   const b = await newFleet("超額B"); await newCap(b.id, "甲", "乙", "11T", 5);
   const route = await newRoute("甲", "乙", "11T", 2, "2026-10-11");
   await api("PUT", `/api/shopee/routes/${route.id}/assignments`, { assignments: [{ fleetId: a.id, requestedTrucks: 2 }, { fleetId: b.id, requestedTrucks: 2 }] });
-  for (const c of (await candidates(route.id)).candidates) await api("PATCH", `/api/shopee/assignments/${c.assignmentId}`, { confirmedTrucks: 2 });
+  const replies=[];
+  for (const c of (await candidates(route.id)).candidates) replies.push((await api("PATCH", `/api/shopee/assignments/${c.assignmentId}`, { confirmedTrucks: 2 })).status);
+  assert.deepStrictEqual(replies.sort(),[200,409]);
   const r = (await api("GET", `/api/shopee/routes?date=2026-10-11`)).data.find((x) => x.id === route.id);
-  assert.strictEqual(r.confirmedTrucks, 4);
+  assert.strictEqual(r.confirmedTrucks, 2);
   assert.strictEqual(r.shortage, 0);
   assert.strictEqual(r.status, "已補滿");
 });
@@ -458,4 +459,14 @@ test("fleet tasks: lists only that fleet's assignments with route info, filterab
   assert.strictEqual((await api("GET", `/api/shopee/fleets/${a.id}/tasks?date=abc`)).status, 400);
   assert.strictEqual((await api("GET", "/api/shopee/fleets/NOPE/tasks")).status, 404);
   assert.strictEqual((await call("GET", `/api/shopee/fleets/${a.id}/tasks`, {})).status, 401);
+});
+
+test('simultaneous cross-route allocations cannot exceed fleet daily capacity',async()=>{
+  const f=await newFleet('併發車隊',{dailyCapacity:1});
+  await newCap(f.id,'併A','併B','11T',1);await newCap(f.id,'併C','併D','11T',1);
+  const a=await newRoute('併A','併B','11T',1,'2026-12-20'),b=await newRoute('併C','併D','11T',1,'2026-12-20');
+  const results=await Promise.all([a,b].map(r=>api('PUT','/api/shopee/routes/'+r.id+'/assignments',{assignments:[{fleetId:f.id,requestedTrucks:1}]})));
+  assert.deepStrictEqual(results.map(r=>r.status).sort(),[200,409]);
+  const total=(await pool.query('SELECT sum(requested_trucks)::int AS n FROM shopee_assignments WHERE fleet_id=$1',[f.id])).rows[0].n;
+  assert.strictEqual(total,1);
 });

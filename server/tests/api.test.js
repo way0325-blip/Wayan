@@ -1,9 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 
-process.env.DATABASE_URL =
-  process.env.TEST_DATABASE_URL ||
-  "postgres://postgres:postgres@127.0.0.1:5432/wayan_dispatch_test";
+const {resetDatabase}=require('./stagingSetup');
 process.env.JWT_SECRET = "test-secret";
 process.env.ADMIN_USERNAME = "admin";
 process.env.ADMIN_PASSWORD = "1234";
@@ -47,6 +45,7 @@ async function call(method, path, headers, body) {
 }
 
 test.before(async () => {
+  await resetDatabase();
   await pool.query("DROP TABLE IF EXISTS audit_logs, settings, orders, drivers, vehicles, users CASCADE");
   await initDb();
   // 種子資料的證照/保養日期是寫死的,到期後(例如 2026-11-18)派車檢查會讓測試變紅,

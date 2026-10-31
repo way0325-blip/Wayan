@@ -1,11 +1,13 @@
 const express = require("express");
-const { pool } = require("../db");
+const { pool: rawPool } = require("../db");
+const {transactionalRouter}=require("../transactionalRouter");
 const { requireAuth, requireRole } = require("../auth");
 const { validateBody } = require("../validation");
-const { logAction } = require("../audit");
+
 const { getSettings } = require("../settings");
 
 const router = express.Router();
+const {pool,withTransaction,logAction}=transactionalRouter(router,rawPool,870033);
 
 router.use(requireAuth);
 
@@ -50,21 +52,6 @@ async function vehicleTypeError(type) {
   return shopee_vehicle_types.includes(type)
     ? null
     : `車型必須是:${shopee_vehicle_types.join("、")}`;
-}
-
-async function withTransaction(fn) {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const result = await fn(client);
-    await client.query("COMMIT");
-    return result;
-  } catch (err) {
-    await client.query("ROLLBACK").catch(() => {});
-    throw err;
-  } finally {
-    client.release();
-  }
 }
 
 // ---------- 需求(路線)----------
@@ -227,6 +214,8 @@ router.patch("/routes/:id", async (req, res, next) => {
       }
     }
 
+    const confirmed = (await pool.query("SELECT COALESCE(SUM(confirmed_trucks),0)::int AS n FROM shopee_assignments WHERE route_id=$1 AND status='已確認'", [current.id])).rows[0].n;
+    if (value.requiredTrucks < confirmed) return res.status(409).json({error:'需求車數不可低於已確認車數，請先調整車隊承接'});
     await pool.query(
       `UPDATE shopee_routes SET service_date = $1, origin = $2, destination = $3, vehicle_type = $4,
          required_trucks = $5, note = $6 WHERE id = $7`,
@@ -391,6 +380,12 @@ router.patch("/assignments/:id", async (req, res, next) => {
     if (!found.rows.length) return res.status(404).json({ error: "找不到此分派" });
     const a = found.rows[0];
 
+    const route=(await pool.query('SELECT * FROM shopee_routes WHERE id=$1',[a.route_id])).rows[0];
+    const fleet=(await pool.query('SELECT * FROM partner_fleets WHERE id=$1',[a.fleet_id])).rows[0];
+    if(req.body?.reset===true || Number(req.body?.confirmedTrucks)>0) {
+      const used=await fleetUsedTrucks(pool,a.fleet_id,route.service_date,route.id);
+      if(fleet.status!=='啟用' || (fleet.daily_capacity>0 && used+a.requested_trucks>fleet.daily_capacity)) return res.status(409).json({error:'車隊已停用或當日承接上限不足，無法恢復承接'});
+    }
     if (req.body?.reset === true) {
       await pool.query(
         "UPDATE shopee_assignments SET confirmed_trucks = 0, status = '待回覆', updated_at = NOW() WHERE id = $1",
@@ -402,6 +397,8 @@ router.patch("/assignments/:id", async (req, res, next) => {
       if (n === null) {
         return res.status(400).json({ error: `承接車數必須是 0 到 ${a.requested_trucks} 的整數(0 代表拒絕)` });
       }
+      const others = (await pool.query("SELECT COALESCE(SUM(confirmed_trucks),0)::int AS n FROM shopee_assignments WHERE route_id=$1 AND id<>$2 AND status='已確認'", [a.route_id,a.id])).rows[0].n;
+      if (others+n > route.required_trucks) return res.status(409).json({error:'承接總車數不得超過路線需求'});
       await pool.query(
         "UPDATE shopee_assignments SET confirmed_trucks = $1, status = $2, updated_at = NOW() WHERE id = $3",
         [n, n > 0 ? "已確認" : "已拒絕", a.id]

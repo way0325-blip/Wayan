@@ -1,5 +1,7 @@
 # Wayan — 港區星際運輸調度中心
 
+> 本開發分支已加入「Wayan 個人營運控制平台＋安全 LINE 司機 Bot」測試版本。**只能連線獨立的 `wayan-staging-db`，禁止部署正式環境。** 新的啟動、API、測試與未完成項目請先閱讀 [測試平台說明](docs/STAGING-PLATFORM.md)。下方保留原版文件供架構沿革參考，其中原本的資料庫名稱、預設展示密碼及群組回報方式不適用本分支。
+
 Node.js + Express + PostgreSQL 全端版本,基於原本的靜態 HTML 展示版擴充而成。
 
 - **前端**:純 HTML/CSS/JS(`public/index.html`),透過 `fetch` 呼叫後端 API,依角色顯示不同操作權限

@@ -3,9 +3,7 @@ const assert = require("node:assert");
 
 // 模擬「放在 Render 代理後面」:在載入 app 之前就設好
 process.env.TRUST_PROXY = "1";
-process.env.DATABASE_URL =
-  process.env.TEST_DATABASE_URL ||
-  "postgres://postgres:postgres@127.0.0.1:5432/wayan_dispatch_test";
+const {resetDatabase}=require('./stagingSetup');
 process.env.JWT_SECRET = "test-secret";
 process.env.ADMIN_USERNAME = "admin";
 process.env.ADMIN_PASSWORD = "1234";

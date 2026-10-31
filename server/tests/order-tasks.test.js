@@ -1,9 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 
-process.env.DATABASE_URL =
-  process.env.TEST_DATABASE_URL ||
-  "postgres://postgres:postgres@127.0.0.1:5432/wayan_dispatch_test";
+const {resetDatabase}=require('./stagingSetup');
 process.env.JWT_SECRET = "test-secret";
 process.env.ADMIN_USERNAME = "admin";
 process.env.ADMIN_PASSWORD = "1234";
@@ -27,6 +25,7 @@ const task = (extra = {}, who = admin) => api("POST", "/api/orders/task", { ...T
 const ordersOf = async (shipCall) => (await api("GET", "/api/orders")).data.filter((o) => o.shipCall === shipCall);
 
 test.before(async () => {
+  await resetDatabase();
   await pool.query("DROP TABLE IF EXISTS shopee_assignments, fleet_routes, partner_fleets, shopee_routes, attendance_records, dispatch_staff, vehicle_maintenance_items, audit_logs, settings, line_daily_index, orders, drivers, vehicles, users CASCADE");
   await initDb();
   const app = require("../index");
@@ -154,6 +153,9 @@ test("editing keeps 船名 / 船商 non-empty, and a single order can still be c
 
 test("summary: groups by 船掛 / 船商 / 船名, 40HQ is counted as HQ not 40, odd sizes go to 其他, totals add up", async () => {
   await pool.query("DELETE FROM orders");
+  // The previous flow correctly retained resources still used by seeded active orders.
+  // Reset the fixture resources together with the order deletion.
+  await pool.query("UPDATE drivers SET status='可派車' WHERE id='D001'; UPDATE vehicles SET status='可用' WHERE id='V001'");
   await task({ shipCall: "SUM-A", carrier: "愛媛", ship: "SHIP A", qty20: 2, qty40: 3, qtyHQ: 4 });
   await task({ shipCall: "SUM-B", carrier: "陽明", ship: "SHIP B", qty40: 1 });
   await task({ shipCall: "", carrier: "夏輝", ship: "NO CALL", qty20: 1 });

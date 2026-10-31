@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, "feature/**"]
+    branches: ["staging/**"]
   pull_request:
     branches: [main]
 
@@ -16,7 +16,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: wayan_dispatch_test
+          POSTGRES_DB: wayan-staging-db
         ports:
           - 5432:5432
         options: >-
@@ -39,4 +39,6 @@ jobs:
 
       - run: npm test
         env:
-          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/wayan_dispatch_test
+          WAYAN_ENV: staging
+          ALLOW_STAGING_TEST_RESET: "yes"
+          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/wayan-staging-db

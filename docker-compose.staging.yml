@@ -1,0 +1,37 @@
+name: wayan-staging
+services:
+  wayan-staging-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: wayan-staging-db
+      POSTGRES_USER: wayan_staging
+      POSTGRES_PASSWORD: ${STAGING_DB_PASSWORD:?Create a fresh staging database password}
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - wayan-staging-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U wayan_staging -d wayan-staging-db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  app:
+    build: .
+    depends_on:
+      wayan-staging-db:
+        condition: service_healthy
+    environment:
+      WAYAN_ENV: staging
+      DATABASE_URL: postgresql://wayan_staging:${STAGING_DB_PASSWORD}@wayan-staging-db:5432/wayan-staging-db
+      JWT_SECRET: ${STAGING_JWT_SECRET:?Create a fresh staging JWT secret}
+      ADMIN_USERNAME: ${STAGING_ADMIN_USERNAME:-wayan-owner}
+      ADMIN_PASSWORD: ${STAGING_ADMIN_PASSWORD:?Create a fresh staging administrator password}
+      CORS_ORIGIN: ${STAGING_CORS_ORIGIN:-http://localhost:3080}
+      LINE_CHANNEL_SECRET: ${STAGING_LINE_CHANNEL_SECRET:-}
+      LINE_CHANNEL_ACCESS_TOKEN: ${STAGING_LINE_CHANNEL_ACCESS_TOKEN:-}
+      CRON_SECRET: ${STAGING_CRON_SECRET:-}
+      PORT: 3000
+    ports:
+      - "127.0.0.1:3080:3000"
+volumes:
+  wayan-staging-data:
