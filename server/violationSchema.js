@@ -1,8 +1,6 @@
-const { pool } = require("./db");
-
 // Additive-only schema migration for Shopee violation management.
 // Existing operational tables are never dropped or rewritten.
-async function initViolationSchema() {
+async function initViolationSchema(pool) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS shopee_violation_rule_versions (
       id BIGSERIAL PRIMARY KEY,
