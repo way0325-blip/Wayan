@@ -245,7 +245,7 @@ async function ensureHqContainerSize() {
 
 async function initDb() {
   await initSchema();
-  await initViolationSchema();
+  await initViolationSchema(pool);
   await seedSettings();
   await ensureHqContainerSize();
   await seedIfEmpty();
