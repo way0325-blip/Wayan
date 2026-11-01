@@ -132,6 +132,10 @@ async function start() {
     throw new Error('測試平台啟動需要獨立的 JWT_SECRET（至少 32 字）及 ADMIN_PASSWORD（至少 12 字），禁止沿用展示密碼');
   }
   await initDb();
+  try {
+    const setup=await require('./stagingFleetBootstrap').setupStagingFleet(require('./db').pool);
+    if(setup.status!=='disabled')console.log('STAGING_FLEET_SETUP',JSON.stringify(setup));
+  } catch(err) { console.error('STAGING_FLEET_SETUP_FAILED',err.code||'SETUP_FAILED'); }
   require('./fleetJobs').startFleetWorker();
   app.listen(PORT, () => {
     console.log(`港區星際運輸調度中心伺服器已啟動: http://localhost:${PORT}`);

@@ -42,3 +42,13 @@ render.yaml採JSON格式（合法YAML子集），可直接以JSON Schema檢查�
 初次不在Blueprint寫入LINE或Google密鑰，不要求你重新貼密鑰。服務建立後，管理工具只對新測試服務設定本機已提供的測試LINE憑證，必要時再部署測試分支。Google背景寫入憑證仍待取得，缺設定時保留blocked工作。不要將此階段誤認為LINE及Sheets已驗收完成。
 
 官方依據：https://render.com/docs/blueprint-spec#referencing-service-properties 、https://render.com/docs/deploy-to-render#specifying-a-branch
+
+## 一次性車隊綁定初始化
+
+測試站可透過三個明確設定準備既有群組綁定流程：STAGING_SETUP_FLEET_NAME、STAGING_SETUP_GROUP_CODE（22碼base64url）及STAGING_SETUP_CODE_EXPIRES_AT（絕對時間、最多15分鐘內）。沒有設定時停用；不是公開API，也不繞過網頁登入。
+
+只在assertStagingDatabase允許的獨立測試庫執行。使用交易與870033鎖，若指定名稱不存在可新增車隊及Sheets同步工作；重名則停止，不猜對象。停用車隊、既有群組綁定及其他有效綁定碼都保留。資料庫僅存代碼SHA256，稽核不記錄原碼。重新啟動不延長有效期限。
+
+實際群組仍須傳送原有「車隊群組綁定 一次性代碼」，由通過LINE簽章的事件決定group ID；不依群組名稱自動授權。使用後代碼會依既有流程刪除，逾時不再產生；完成設定後應清空三個暫時環境變數。
+
+初始化結果只記錄status、fleetId與到期時間，不輸出代碼。選填設定失敗只留下錯誤代碼，既有Bot不因此停止服務。平台管理員登入密碼與其他使用者資料不修改。
