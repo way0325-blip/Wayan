@@ -3,7 +3,7 @@ const {audit}=require('./transaction');
 const {todayInTaipei}=require('./dates');
 const number=id=>'S'+String(id).padStart(6,'0');
 async function reportedTotal(db,fleetId,day){return Number((await db.query('SELECT reported_total FROM shopee_fleet_reports WHERE fleet_id=$1 AND service_date=$2 ORDER BY id DESC LIMIT 1',[fleetId,day])).rows[0]?.reported_total||0);}
-async function assignment(db,id,fleetId=null){return (await db.query(`SELECT a.*,r.service_date,r.origin,r.destination,r.vehicle_type,r.required_trucks,f.name AS fleet_name,f.status AS fleet_status,g.group_id FROM shopee_assignments a JOIN shopee_routes r ON r.id=a.route_id JOIN partner_fleets f ON f.id=a.fleet_id LEFT JOIN line_fleet_groups g ON g.fleet_id=f.id WHERE a.id=$1 AND ($2::text IS NULL OR a.fleet_id=$2) FOR UPDATE OF a`,[id,fleetId])).rows[0];}
+async function assignment(db,id,fleetId=null){return (await db.query(`SELECT a.*,r.service_date,r.origin,r.destination,r.vehicle_type,r.required_trucks,r.note AS route_note,r.is_simulated AS route_simulated,f.name AS fleet_name,f.status AS fleet_status,g.group_id FROM shopee_assignments a JOIN shopee_routes r ON r.id=a.route_id JOIN partner_fleets f ON f.id=a.fleet_id LEFT JOIN line_fleet_groups g ON g.fleet_id=f.id WHERE a.id=$1 AND ($2::text IS NULL OR a.fleet_id=$2) FOR UPDATE OF a`,[id,fleetId])).rows[0];}
 async function reportTotal(db,fleetId,day,body,actor,eventId=null){
   // The caller holds the shared dispatch/group lock 870033 for the entire transaction.
   const total=typeof body.total==='boolean'||body.total===''||body.total===null?NaN:Number(body.total),note=typeof body.note==='string'?body.note.trim():'';
@@ -24,6 +24,7 @@ async function reportTotal(db,fleetId,day,body,actor,eventId=null){
   return {duplicate:false,report:row};
 }
 async function queueShopeeNotification(db,a,actor){
+  if(a.route_simulated||String(a.route_note||'').startsWith('[模擬]'))return {error:'模擬路線禁止LINE通知',status:409};
   if(!a.group_id||a.fleet_status!=='啟用'||a.status==='已拒絕')return {error:'車隊須啟用並綁定群組，且任務未拒絕',status:409};
   const version=a.updated_at.toISOString();
   const r=await db.query(`INSERT INTO fleet_delivery_jobs(id,job_key,kind,payload) VALUES($1,$2,'line',$3) ON CONFLICT(job_key) DO NOTHING RETURNING id`,[crypto.randomUUID(),`line:shopee:${a.id}:${version}:${a.group_id}`,{type:'shopee',assignmentId:a.id,groupId:a.group_id,version}]);
@@ -53,7 +54,8 @@ async function handleShopeeGroup(db,text,fleet,actor,eventId){
     const cap=(await db.query('SELECT daily_capacity FROM partner_fleets WHERE id=$1',[fleet.id])).rows[0].daily_capacity;
     if(cap>0&&Number(await usedCapacity(db,fleet.id,a.service_date))>cap)return '當日承接上限不足，請聯絡調度。';
     const others=Number((await db.query("SELECT COALESCE(SUM(confirmed_trucks),0) n FROM shopee_assignments WHERE route_id=$1 AND id<>$2 AND status='已確認'",[a.route_id,a.id])).rows[0].n);
-    if(others+n>a.required_trucks)return '承接總數超過路線需求，請聯絡調度。';
+    if(others+n+await require('./deliveryDispatch').ownCount(db,a.route_id)>a.required_trucks)return '承接總數超過路線需求，請聯絡調度。';
+    const linked=Number((await db.query("SELECT count(*) n FROM delivery_trips WHERE assignment_id=$1 AND status<>'已取消'",[a.id])).rows[0].n);if(a.delivery_managed&&n<linked)return '已規劃車趟多於承接數，請調度先調整分派再承接。';
   }else if(!detail?.trim()||detail.length>500)return '拒絕任務請提供 1～500 字原因。';
   await db.query('UPDATE shopee_assignments SET confirmed_trucks=$2,status=$3,updated_at=clock_timestamp() WHERE id=$1',[a.id,n,n?'已確認':'已拒絕']);
   await audit(db,actor,kind,'蝦皮承接',a.id,detail);return `${number(a.id)} 已登記${kind} ${n} 趟。回報今日累計總車數請輸入「蝦皮報到 總數」。`;

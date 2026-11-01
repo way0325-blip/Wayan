@@ -15,7 +15,8 @@ router.get('/',async(req,res,next)=>{try{
     FROM assignments a LEFT JOIN latest l ON l.fleet_id=a.fleet_id GROUP BY a.fleet_id,a.fleet_name,l.reported_total,l.source,l.created_at,l.reported_by)
   SELECT (SELECT COALESCE(json_agg(a ORDER BY fleet_name,id),'[]'::json) FROM assignments a) AS items,
     (SELECT COALESCE(json_agg(f ORDER BY fleet_name),'[]'::json) FROM fleets f) AS fleets,
-    (SELECT COALESCE(SUM(required_trucks),0)::int FROM shopee_routes WHERE service_date=$1) AS required`,[day])).rows[0];
+    (SELECT COALESCE(SUM(required_trucks),0)::int FROM shopee_routes WHERE service_date=$1) AS required,
+    (SELECT count(*)::int FROM delivery_trips WHERE service_date=$1 AND demand_route_id IS NOT NULL AND driver_id IS NOT NULL AND fleet_id IS NULL AND status<>'已取消') AS own`,[day])).rows[0];
   res.set('Cache-Control','no-store').json({...data,date:day,items:data.items.map(a=>({...a,number:number(a.id)})),updatedAt:new Date().toISOString()});
 }catch(e){next(e);}});
 router.get('/fleets/:id/reports',async(req,res,next)=>{try{

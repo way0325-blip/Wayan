@@ -4,7 +4,7 @@ const {todayInTaipei}=require('./dates');
 async function counts(db,id){return Number((await db.query('SELECT count(*)::int n FROM delivery_checkins WHERE trip_id=$1',[id])).rows[0].n);}
 function heading(t){return `${t.task_code||'D'+String(t.id).padStart(6,'0')} ${t.task_name||'門店配送'}`;}
 function format(t,stops,n,max=Infinity){
- const header=`【蝦皮店到店 ${heading(t)}】\n${t.service_date} ${t.departure_time}｜${t.warehouse_name}\n${t.warehouse_address||'取貨倉地址待調度確認'}\n狀態：${t.status}\n需求 ${t.required_checkins}／已報到 ${n}／尚缺 ${Math.max(0,t.required_checkins-n)}\n`;
+ const header=`${(t.is_simulated||String(t.note||'').startsWith('[模擬]'))?'【模擬資料，不可實際派送】\n':''}【蝦皮店到店 ${heading(t)}】\n${t.service_date} ${t.departure_time}｜${t.warehouse_name}\n${t.warehouse_address||'取貨倉地址待調度確認'}\n狀態：${t.status}\n需求 ${t.required_checkins}／已報到 ${n}／尚缺 ${Math.max(0,t.required_checkins-n)}\n`;
  const footer=`\n報到：車趟報到 ${t.task_code}\n查詢：車趟狀態 ${t.task_code}\n同一LINE帳號每個車趟僅計一次。\n異常：車趟異常 ${t.task_code} 延誤 說明內容`;
  let body='';for(const s of stops){const line=`${s.stop_no}. ${s.store_code} ${s.store_name}｜${s.city}${s.district} ${s.address}\n`;if(header.length+body.length+line.length+footer.length+50>max){body+='其餘停靠站請於平台查看或複製完整任務文字。\n';break;}body+=line;}
  return header+body+footer;

@@ -45,7 +45,7 @@ async function rowValues(key,id){
   }
   if(key==='fleets'){
     const r=(await pool.query('SELECT f.*,g.bound_at FROM partner_fleets f LEFT JOIN line_fleet_groups g ON g.fleet_id=f.id WHERE f.id=$1',[id])).rows[0];
-    if(!r) throw error('RECORD_NOT_FOUND');return [r.id,r.name,r.contact_name,r.phone,r.daily_capacity,r.status,r.bound_at?'已綁定':'未綁定',serial(new Date())];
+    if(!r) throw error('RECORD_NOT_FOUND');if(r.is_simulated||String(r.note||'').startsWith('[模擬]'))throw error('SIMULATED_TASK_BLOCKED');return [r.id,r.name,r.contact_name,r.phone,r.daily_capacity,r.status,r.bound_at?'已綁定':'未綁定',serial(new Date())];
   }
   if(key==='tasks'){
     const r=(await pool.query('SELECT t.*,f.name AS fleet_name FROM fleet_work_orders t JOIN partner_fleets f ON f.id=t.fleet_id WHERE t.id=$1',[id])).rows[0];
@@ -71,6 +71,7 @@ async function sheetRow(key,id){
   });
 }
 async function deliverSheet(payload){
+  if(payload.key==='fleets'&&(await pool.query('SELECT is_simulated FROM partner_fleets WHERE id=$1',[payload.id])).rows[0]?.is_simulated)throw error('SIMULATED_TASK_BLOCKED');
   const id=await targetId();if(!id || !credentialsReady()) throw error('GOOGLE_NOT_CONFIGURED');
   if(!/^[A-Za-z0-9_-]{10,200}$/.test(id)) throw error('GOOGLE_TARGET_INVALID');
   const spec=SHEETS[payload.key];if(!spec) throw error('INVALID_SHEET_KEY');

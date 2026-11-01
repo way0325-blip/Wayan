@@ -18,8 +18,9 @@ async function deliverLine(job){
   await pushMessage(task.group_id,text,{retryKey:job.id});
 }
 async function deliverShopeeLine(job){
-  const a=(await pool.query(`SELECT a.*,r.service_date,r.origin,r.destination,r.vehicle_type,f.status AS fleet_status,g.group_id
+  const a=(await pool.query(`SELECT a.*,r.service_date,r.origin,r.destination,r.vehicle_type,r.note AS route_note,r.is_simulated AS route_simulated,f.status AS fleet_status,g.group_id
     FROM shopee_assignments a JOIN shopee_routes r ON r.id=a.route_id JOIN partner_fleets f ON f.id=a.fleet_id LEFT JOIN line_fleet_groups g ON g.fleet_id=f.id WHERE a.id=$1`,[job.payload.assignmentId])).rows[0];
+  if(a&&(a.route_simulated||String(a.route_note||'').startsWith('[模擬]')))throw error('SIMULATED_TASK_BLOCKED');
   if(!a||a.fleet_status!=='啟用'||a.group_id!==job.payload.groupId||a.updated_at.toISOString()!==job.payload.version||a.status==='已拒絕')throw error('TASK_OR_GROUP_CHANGED');
   if(job.first_send_at&&Date.now()-new Date(job.first_send_at).getTime()>23*3600000)throw error('RETRY_WINDOW_EXPIRED');
   await pool.query('UPDATE fleet_delivery_jobs SET first_send_at=COALESCE(first_send_at,NOW()) WHERE id=$1',[job.id]);
@@ -47,7 +48,7 @@ async function runJobs(options={}){
     }catch(err){
       const code=/^[A-Z_]+$/.test(err.code||'')?err.code:'DELIVERY_FAILED';
       const blocked=['GOOGLE_NOT_CONFIGURED','LINE_NOT_CONFIGURED'].includes(code);
-      const permanent=['TASK_OR_GROUP_CHANGED','RETRY_WINDOW_EXPIRED','SHEET_HEADERS_CHANGED','SHEET_ROW_CONFLICT'].includes(code);
+      const permanent=['SIMULATED_TASK_BLOCKED','TASK_OR_GROUP_CHANGED','RETRY_WINDOW_EXPIRED','SHEET_HEADERS_CHANGED','SHEET_ROW_CONFLICT'].includes(code);
       await pool.query(`UPDATE fleet_delivery_jobs SET status=$2,attempts=CASE WHEN $3 THEN attempts-1 WHEN $4 THEN 5 ELSE attempts END,
         next_attempt_at=NOW()+INTERVAL '60 seconds',locked_until=NULL,error_code=$5,updated_at=NOW() WHERE id=$1 AND claimed_revision=$6 AND status='processing'`,[job.id,blocked?'blocked':'failed',blocked,permanent,code,job.claimed_revision]);
       results.push({id:job.id,status:blocked?'blocked':'failed',error:code});

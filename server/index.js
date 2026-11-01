@@ -73,6 +73,7 @@ const apiLimiter = rateLimit({
   skip: req => req.method === 'GET' && req.path.startsWith('/control/'),
   windowMs: 15 * 60 * 1000,
   limit: 300,
+  message:{error:'操作過於頻繁，請稍後重試'},
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -86,7 +87,11 @@ const loginLimiter = rateLimit({
   message: { error: "登入嘗試次數過多,請 15 分鐘後再試" },
 });
 
-app.use("/api", apiLimiter);
+const readApiLimiter=rateLimit({
+  skip:req=>req.path.startsWith('/control/'),windowMs:15*60*1000,limit:600,
+  standardHeaders:true,legacyHeaders:false,message:{error:'查詢過於頻繁，請稍後再更新'},
+});
+app.use('/api',(req,res,next)=>req.method==='GET'?readApiLimiter(req,res,next):apiLimiter(req,res,next));
 app.use("/api/auth/login", loginLimiter);
 
 app.use("/api/auth", authRoutes);
@@ -132,6 +137,7 @@ async function start() {
     throw new Error('測試平台啟動需要獨立的 JWT_SECRET（至少 32 字）及 ADMIN_PASSWORD（至少 12 字），禁止沿用展示密碼');
   }
   await initDb();
+  try {const demo=await require('./stagingDemoOrders').setupStagingDemo(require('./db').pool);if(demo.status!=='disabled')console.log('STAGING_DEMO_ORDERS',JSON.stringify(demo));}catch(err){console.error('STAGING_DEMO_ORDERS_FAILED',err.code||'SETUP_FAILED');}
   try {
     const setup=await require('./stagingFleetBootstrap').setupStagingFleet(require('./db').pool);
     if(setup.status!=='disabled')console.log('STAGING_FLEET_SETUP',JSON.stringify(setup));
