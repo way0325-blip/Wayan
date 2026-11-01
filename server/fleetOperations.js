@@ -32,8 +32,8 @@ async function queueNotification(db,task,actor){
   return {queued:result.rowCount===1,duplicate:result.rowCount===0};
 }
 async function addIncident(db,task,kind,description,actor,eventId=null){
-  const incident=(await db.query(`INSERT INTO fleet_incidents(task_id,fleet_id,line_event_id,kind,severity,description,reported_by)
-    VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,[task.id,task.fleet_id,eventId,kind,kind==='事故'?'緊急':'一般',description,actor.username])).rows[0];
+  const incident=(await db.query(`INSERT INTO fleet_incidents(task_id,fleet_id,line_event_id,kind,severity,description,reported_by,delivery_trip_id)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,[task.delivery?null:task.id,task.fleet_id,eventId,kind,kind==='事故'?'緊急':'一般',description,actor.username,task.delivery?task.id:null])).rows[0];
   const history=(await db.query(`INSERT INTO fleet_incident_history(incident_id,actor,action,next_status,note)
     VALUES($1,$2,'建立回報','待處理',$3) RETURNING id`,[incident.id,actor.username,description])).rows[0];
   await audit(db,actor,'建立異常','車隊異常',incident.id,`${kind} ${taskNumber(task.id)}`);
@@ -63,6 +63,8 @@ async function handleFleetGroupEvent(db,event,eventId){
   if(!fleet) return null;
   if(fleet.status!=='啟用') return '車隊已停用，請聯絡管理員。';
   if(text==='門店車趟')return require('./deliveryLine').list(db,fleet);
+  const checkin=await require('./deliveryCheckins').handle(db,text,fleet,userId,eventId);
+  if(checkin!==null)return checkin;
   const keyword=await require('./lineKeywords').keywordReply(db,text);
   if(keyword!==null)return keyword;
   const actor={username:`LINE車隊:${fleet.id}:${userId.slice(-6)}`,role:'fleet'};

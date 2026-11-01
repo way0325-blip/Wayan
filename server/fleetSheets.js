@@ -38,7 +38,7 @@ async function rowValues(key,id){
   }
   if(key==='penalties'){
     const r=(await pool.query('SELECT c.*,f.name AS fleet_name FROM penalty_cases c JOIN partner_fleets f ON f.id=c.fleet_id WHERE c.id=$1',[id])).rows[0];if(!r)throw error('RECORD_NOT_FOUND');
-    return ['P'+r.id,r.fleet_name,'R'+r.rule_id,r.occurred_on,r.status,r.points===null?'':Number(r.points),r.amount===null?'':Number(r.amount),r.responsibility,r.appeal,r.reviewer||'',r.decision,serial(r.updated_at)];
+    return ['P'+r.id,r.fleet_name,'R'+r.rule_id,r.occurred_on,r.status,r.points===null?'':Number(r.points),r.amount===null?'':Number(r.amount),(r.incident_id?'[異常 I'+String(r.incident_id).padStart(6,'0')+'] ':'')+r.responsibility,r.appeal,r.reviewer||'',r.decision,serial(r.updated_at)];
   }
   if(key==='penaltyHistory'){
     const r=(await pool.query('SELECT * FROM penalty_case_history WHERE id=$1',[id])).rows[0];if(!r)throw error('RECORD_NOT_FOUND');return ['PH'+r.id,'P'+r.case_id,serial(r.created_at),r.actor,r.action,r.note];
@@ -53,7 +53,7 @@ async function rowValues(key,id){
   }
   if(key==='incidents'){
     const r=(await pool.query('SELECT i.*,f.name AS fleet_name FROM fleet_incidents i JOIN partner_fleets f ON f.id=i.fleet_id WHERE i.id=$1',[id])).rows[0];
-    if(!r) throw error('RECORD_NOT_FOUND');return [caseNumber(r.id),r.fleet_id,r.fleet_name,taskNumber(r.task_id),serial(r.created_at),r.kind,r.severity,r.status,r.description,r.handler,r.resolution,serial(r.updated_at)];
+    if(!r) throw error('RECORD_NOT_FOUND');return [caseNumber(r.id),r.fleet_id,r.fleet_name,r.delivery_trip_id?(await pool.query('SELECT task_code FROM delivery_trips WHERE id=$1',[r.delivery_trip_id])).rows[0].task_code:taskNumber(r.task_id),serial(r.created_at),r.kind,r.severity,r.status,r.description,r.handler,r.resolution,serial(r.updated_at)];
   }
   if(key==='history'){
     const r=(await pool.query('SELECT * FROM fleet_incident_history WHERE id=$1',[id])).rows[0];

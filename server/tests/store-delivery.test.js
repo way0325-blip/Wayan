@@ -91,3 +91,43 @@ test('store imports accept a valid bounded batch above the legacy 100KB body lim
   const rows=Array.from({length:150},(_,i)=>store('BULK-'+i,'桃園市','觀音區',{source:'測試來源'.repeat(100)}));assert.ok(Buffer.byteLength(JSON.stringify({rows}))>100*1024);
   const r=await api('POST','/api/store-delivery/stores/import',{rows});assert.equal(r.status,201);assert.equal(r.data.imported,150);
 });
+
+test('custom task codes and LINE copy text show demand, names and safe input validation',async()=>{
+ const date=require('../dates').todayInTaipei();await order('A',{reference:'CHECKIN-ORDER',serviceDate:date});const o=(await api('GET','/api/store-delivery/orders?date='+date)).data.find(o=>o.reference==='CHECKIN-ORDER');
+ const body={requestId:crypto.randomUUID(),orderIds:[o.id],departureTime:'08:00',taskCode:'MY-30',taskName:'跨區測試路線',requiredCheckins:30};
+ assert.equal((await api('POST','/api/store-delivery/trips',{...body,requiredCheckins:0})).status,400);
+ const r=await api('POST','/api/store-delivery/trips',body);assert.equal(r.status,201);assert.equal(r.data.task_code,'MY-30');
+ await pool.query('UPDATE delivery_trips SET fleet_id=$2 WHERE id=$1',[r.data.id,fleet.id]);
+ const text=(await api('GET',`/api/store-delivery/trips/${r.data.id}/line-text`)).data.text;assert.match(text,/MY-30 跨區測試路線/);assert.match(text,/需求 30／已報到 0／尚缺 30/);assert.match(text,/車趟報到 MY-30/);
+ assert.equal((await api('GET',`/api/store-delivery/trips/${r.data.id}/line-text`,undefined,null)).status,401);
+});
+test('signed LINE check-ins enforce fleet, unique person, replay protection, capacity and realtime counts',async()=>{
+ const t=(await pool.query("SELECT * FROM delivery_trips WHERE task_code='MY-30'")).rows[0];
+ const group='C'+'c'.repeat(32);await pool.query('DELETE FROM line_fleet_groups WHERE fleet_id=$1',[fleet.id]);await pool.query('INSERT INTO line_fleet_groups(group_id,fleet_id,bound_by) VALUES($1,$2,$3)',[group,fleet.id,'test']);
+ async function send(user,text,eventId=crypto.randomUUID()) {const payload=JSON.stringify({events:[{type:'message',webhookEventId:eventId,timestamp:Date.now(),source:{type:'group',groupId:group,userId:user},message:{id:eventId,type:'text',text}}]});const r=await fetch(base+'/api/line/webhook',{method:'POST',headers:{'Content-Type':'application/json','x-line-signature':crypto.createHmac('sha256','delivery-test-secret').update(payload).digest('base64')},body:payload});assert.equal(r.status,200);return (await pool.query('SELECT reply_text FROM line_events WHERE event_id=$1',[eventId])).rows[0].reply_text;}
+ const event=crypto.randomUUID();assert.match(await send('U-test-1','車趟報到 MY-30',event),/尚缺 29/);await send('U-test-1','車趟報到 MY-30',event);assert.match(await send('U-test-1','車趟報到 MY-30'),/未重複計數/);
+ assert.equal(await require('../deliveryCheckins').counts(pool,t.id),1);assert.match(await send('U-test-1','車趟狀態 MY-30'),/尚缺 29/);
+ assert.match(await send('U-test-2','車趟報到 OTHER'),/找不到/);
+ await pool.query('UPDATE delivery_trips SET required_checkins=2 WHERE id=$1',[t.id]);
+ await Promise.all([send('U-test-2','車趟報到 MY-30'),send('U-test-3','車趟報到 MY-30')]);assert.equal(await require('../deliveryCheckins').counts(pool,t.id),2);
+ const reply=await send('U-test-1','車趟異常 MY-30 延誤 測試道路壅塞');assert.match(reply,/異常 I/);
+ const i=(await pool.query('SELECT * FROM fleet_incidents WHERE delivery_trip_id=$1',[t.id])).rows[0];assert.ok(i);assert.equal(i.task_id,null);
+ assert.equal((await api('GET','/api/fleet-ops/incidents/'+i.id)).status,200);
+ const values=await require('../fleetSheets').rowValues('incidents',i.id);assert.equal(values[3],'MY-30');
+ assert.ok((await pool.query("SELECT 1 FROM fleet_delivery_jobs WHERE job_key=$1",['sheet:incidents:'+i.id])).rowCount);
+ const d=(await api('GET','/api/store-delivery/trips?date='+t.service_date)).data.find(x=>String(x.id)===String(t.id));assert.equal(d.checked_in,2);
+});
+
+test('incident-linked penalties require verified rules, reject fleet mismatch and duplicate cases, and queue Sheets',async()=>{
+ const i=(await pool.query('SELECT * FROM fleet_incidents WHERE delivery_trip_id IS NOT NULL LIMIT 1')).rows[0];const date=require('../dates').todayInTaipei();
+ const rule=(await pool.query("INSERT INTO penalty_rules(rule_code,version,title,terms,source,created_by,effective_date) VALUES('TEST-INCIDENT',1,'測試條款','測試條件','測試來源','test',$1) RETURNING *",[date])).rows[0];
+ const body={fleetId:fleet.id,ruleId:rule.id,incidentId:i.id,occurredOn:date,responsibility:'僅測試人工責任覆核'};
+ assert.equal((await api('POST','/api/penalty-cases',body)).status,409);
+ await pool.query("UPDATE penalty_rules SET status='已核實',verified_by='test',verified_at=NOW() WHERE id=$1",[rule.id]);
+ assert.equal((await api('POST','/api/penalty-cases',{...body,fleetId:'unknown'})).status,400);
+ const r=await api('POST','/api/penalty-cases',body);assert.equal(r.status,201);assert.equal(String(r.data.incident_id),String(i.id));assert.equal(r.data.amount,null);assert.equal(r.data.points,null);
+ assert.equal((await api('POST','/api/penalty-cases',body)).status,409);
+ const values=await require('../fleetSheets').rowValues('penalties',r.data.id);assert.match(values[7],/異常 I/);assert.ok((await pool.query('SELECT 1 FROM fleet_delivery_jobs WHERE job_key=$1',['sheet:penalties:'+r.data.id])).rowCount);
+});
+
+test('LINE task formatter keeps commands when large routes need shortening',()=>{const c=require('../deliveryCheckins');const t={id:1,task_code:'TEST',task_name:'測試',service_date:day,departure_time:'08:00',warehouse_name:'測試倉',warehouse_address:'測試地址',status:'待派車',required_checkins:30};const stops=Array.from({length:200},(_,i)=>({stop_no:i+1,store_code:'S'+i,store_name:'測試店',city:'桃園市',district:'觀音區',address:'測試'.repeat(100)}));const text=c.format(t,stops,1,4200);assert.ok(text.length<=4200);assert.match(text,/車趟報到 TEST/);assert.match(text,/車趟異常 TEST/);assert.match(text,/尚缺 29/);});
