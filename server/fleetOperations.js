@@ -61,6 +61,8 @@ async function handleFleetGroupEvent(db,event,eventId){
   const fleet=(await db.query(`SELECT f.id,f.name,f.status FROM line_fleet_groups g JOIN partner_fleets f ON f.id=g.fleet_id WHERE g.group_id=$1 FOR SHARE OF g,f`,[groupId])).rows[0];
   if(!fleet) return null;
   if(fleet.status!=='啟用') return '車隊已停用，請聯絡管理員。';
+  const keyword=await require('./lineKeywords').keywordReply(db,text);
+  if(keyword!==null)return keyword;
   const actor={username:`LINE車隊:${fleet.id}:${userId.slice(-6)}`,role:'fleet'};
   const shopeeReply=await require('./shopeeCheckins').handleShopeeGroup(db,text,fleet,actor,eventId);
   if(shopeeReply!==null)return shopeeReply;

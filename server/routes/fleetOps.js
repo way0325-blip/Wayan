@@ -11,6 +11,33 @@ const router=express.Router();
 const {pool,logAction}=transactionalRouter(router,rawPool,870033);
 router.use(requireAuth,requireRole('admin','dispatcher'));
 const admin=requireRole('admin');
+router.get('/activity-status',async(req,res,next)=>{try{
+  res.set('Cache-Control','no-store').json((await pool.query(`SELECT f.id,f.name,f.status,g.group_id IS NOT NULL AS bound,r.label AS group_name,r.bot_present,r.last_seen_at,
+    (SELECT MAX(a.received_at) FROM fleet_line_activity a WHERE a.fleet_id=f.id) AS last_activity
+    FROM partner_fleets f LEFT JOIN line_fleet_groups g ON g.fleet_id=f.id LEFT JOIN line_group_registry r ON r.group_id=g.group_id ORDER BY f.name LIMIT 1000`)).rows);
+}catch(e){next(e);}});
+router.get('/activity',async(req,res,next)=>{try{
+  const fleetId=req.query.fleetId||'';if(typeof fleetId!=='string'||fleetId.length>100)return res.status(400).json({error:'車隊篩選無效'});
+  let before=null;
+  if(req.query.before){try{before=JSON.parse(Buffer.from(req.query.before,'base64url').toString());if(typeof before.time!=='string'||Number.isNaN(Date.parse(before.time))||typeof before.id!=='string'||before.id.length>200)throw Error();}catch{return res.status(400).json({error:'分頁游標無效'});}}
+  const rows=(await pool.query(`SELECT a.event_id,a.fleet_id,f.name AS fleet_name,a.received_at,
+    to_char(a.received_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_time,
+    a.event_type,a.message_type,a.content,a.sender_label,a.hidden,e.status,e.delivery_status,
+    CASE WHEN a.hidden THEN NULL ELSE e.reply_text END AS reply_text
+    FROM fleet_line_activity a JOIN partner_fleets f ON f.id=a.fleet_id JOIN line_events e ON e.event_id=a.event_id
+    WHERE ($1='' OR a.fleet_id=$1) AND ($2::timestamptz IS NULL OR (a.received_at,a.event_id)<($2::timestamptz,$3))
+    ORDER BY a.received_at DESC,a.event_id DESC LIMIT 51`,[fleetId,before?.time||null,before?.id||''])).rows;
+  const last=rows[49];res.set('Cache-Control','no-store').json({items:rows.slice(0,50),nextCursor:rows.length>50?Buffer.from(JSON.stringify({time:last.cursor_time,id:last.event_id})).toString('base64url'):null});
+}catch(e){next(e);}});
+router.get('/keywords',admin,async(req,res,next)=>{try{res.set('Cache-Control','no-store').json((await pool.query('SELECT * FROM line_keyword_replies ORDER BY keyword')).rows);}catch(e){next(e);}});
+router.put('/keywords',admin,async(req,res,next)=>{try{
+  const {keyword,reply,enabled}=req.body||{};
+  if(typeof keyword!=='string'||keyword!==keyword.trim()||!keyword||keyword.length>30||/\s/.test(keyword)||typeof reply!=='string'||!reply.trim()||reply.length>1500||typeof enabled!=='boolean')return res.status(400).json({error:'關鍵字需為1～30字且無空白，回覆需為1～1500字，並指定啟用狀態'});
+  if(require('../lineKeywords').reserved.has(keyword))return res.status(409).json({error:'這是內建任務或報到指令，不能改成文字回覆'});
+  if(!(await pool.query('SELECT 1 FROM line_keyword_replies WHERE keyword=$1',[keyword])).rowCount&&(await pool.query('SELECT count(*)::int n FROM line_keyword_replies')).rows[0].n>=100)return res.status(409).json({error:'關鍵字最多100組，請編輯或停用既有項目'});
+  const r=(await pool.query(`INSERT INTO line_keyword_replies(keyword,reply,enabled,updated_by) VALUES($1,$2,$3,$4) ON CONFLICT(keyword) DO UPDATE SET reply=EXCLUDED.reply,enabled=EXCLUDED.enabled,updated_by=EXCLUDED.updated_by,updated_at=NOW() RETURNING *`,[keyword,reply.trim(),enabled,req.user.username])).rows[0];
+  await logAction(req,'設定關鍵字回覆','LINE關鍵字',keyword,enabled?'啟用':'停用');res.json(r);
+}catch(e){next(e);}});
 const clean=(v,max)=>typeof v==='string' && v.trim().length<=max?v.trim():null;
 const idOk=id=>/^\d{1,15}$/.test(id||'');
 const statuses=['待回覆','已確認','已拒絕','執行中','已完成','已取消'];
