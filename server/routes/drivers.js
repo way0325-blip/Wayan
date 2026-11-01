@@ -71,6 +71,7 @@ router.patch(
 
 router.delete("/:id", requireRole("admin"), async (req, res, next) => {
   try {
+    if((await pool.query('SELECT 1 FROM delivery_trips WHERE driver_id=$1 LIMIT 1',[req.params.id])).rowCount)return res.status(409).json({error:'司機已有門店車趟歷程，請保留資料'});
     const inUse = await pool.query(
       "SELECT 1 FROM orders WHERE driver_id = $1 AND status IN ('已派車', '執行中')",
       [req.params.id]

@@ -43,6 +43,7 @@ app.use(
         scriptSrcAttr: ["'unsafe-inline'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", "data:"],
+        frameSrc: ["'self'", "https://www.openstreetmap.org"],
       },
     },
   })
@@ -64,6 +65,7 @@ app.use(
   })
 );
 
+app.use('/api/store-delivery',express.json({limit:'2mb'}));
 app.use(express.json({ limit: "100kb" }));
 
 // 全站 API 速率限制,避免暴力嘗試或濫用
@@ -105,6 +107,7 @@ app.use("/api/line/admin", require("./routes/lineAdmin"));
 app.use('/api/fleet-ops',require('./routes/fleetOps'));
 app.use('/api/penalty-rules',require('./routes/penaltyRules'));
 app.use('/api/penalty-cases',require('./routes/penaltyCases'));
+app.use('/api/store-delivery',require('./routes/storeDelivery'));
 app.use('/api/shopee-live',require('./routes/shopeeLive'));
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));

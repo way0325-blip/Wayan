@@ -232,6 +232,7 @@ router.patch("/routes/:id", async (req, res, next) => {
 router.delete("/routes/:id", requireRole("admin"), async (req, res, next) => {
   try {
     if((await pool.query('SELECT 1 FROM shopee_fleet_reports c JOIN shopee_assignments a ON a.fleet_id=c.fleet_id JOIN shopee_routes r ON r.id=a.route_id AND r.service_date=c.service_date WHERE a.route_id=$1 LIMIT 1',[req.params.id])).rowCount)return res.status(409).json({error:'已有報到歷程，不可刪除路線'});
+    if((await pool.query('SELECT 1 FROM delivery_trips t JOIN shopee_assignments a ON a.id=t.assignment_id WHERE a.route_id=$1 LIMIT 1',[req.params.id])).rowCount)return res.status(409).json({error:'已有連結門店車趟，請保留需求歷程'});
     const result = await pool.query("DELETE FROM shopee_routes WHERE id = $1 RETURNING origin, destination", [req.params.id]);
     if (!result.rowCount) return res.status(404).json({ error: "找不到此需求" });
     await logAction(req, "刪除", "蝦皮需求", req.params.id, `${result.rows[0].origin}→${result.rows[0].destination}`);
@@ -263,7 +264,8 @@ async function fleetUsedTrucks(db, fleetId, date, excludeRouteId) {
   );
     const manual=await db.query(`SELECT COALESCE(SUM(CASE WHEN status='待回覆' THEN requested_trucks ELSE confirmed_trucks END),0)::int AS used
       FROM fleet_work_orders WHERE fleet_id=$1 AND service_date=$2 AND status NOT IN ('已拒絕','已取消')`,[fleetId,date]);
-    return rows[0].used+manual.rows[0].used;
+    const delivery=Number((await db.query("SELECT count(*) AS n FROM delivery_trips WHERE fleet_id=$1 AND service_date=$2 AND status<>'已取消' AND assignment_id IS NULL",[fleetId,date])).rows[0].n);
+    return rows[0].used+manual.rows[0].used+delivery;
 }
 
 function serializeCandidate(row, usedElsewhere) {
@@ -390,6 +392,8 @@ router.patch("/assignments/:id", async (req, res, next) => {
 
     const route=(await pool.query('SELECT * FROM shopee_routes WHERE id=$1',[a.route_id])).rows[0];
     const fleet=(await pool.query('SELECT * FROM partner_fleets WHERE id=$1',[a.fleet_id])).rows[0];
+    const linked=Number((await pool.query("SELECT count(*) n FROM delivery_trips WHERE assignment_id=$1 AND status<>'已取消'",[a.id])).rows[0].n);
+    if(linked>0&&(req.body?.reset===true||Number(req.body?.confirmedTrucks)<linked))return res.status(409).json({error:'已連結門店車趟，不能將承接量降至已安排趟數以下'});
     const arrived=await require('../shopeeCheckins').reportedTotal(pool,a.fleet_id,route.service_date);
     const others=Number((await pool.query("SELECT COALESCE(SUM(a.confirmed_trucks),0) n FROM shopee_assignments a JOIN shopee_routes r ON r.id=a.route_id WHERE a.fleet_id=$1 AND r.service_date=$2 AND a.id<>$3",[a.fleet_id,route.service_date,a.id])).rows[0].n);
     const nextCount=req.body?.reset===true?0:Number(req.body?.confirmedTrucks);
@@ -426,6 +430,7 @@ router.patch("/assignments/:id", async (req, res, next) => {
 router.delete("/assignments/:id", async (req, res, next) => {
   try {
     if(!/^\d{1,9}$/.test(req.params.id))return res.status(400).json({error:'分派編號無效'});
+    if((await pool.query('SELECT 1 FROM delivery_trips WHERE assignment_id=$1 LIMIT 1',[req.params.id])).rowCount)return res.status(409).json({error:'已有連結門店車趟，請保留分派歷程'});
     if((await pool.query('SELECT 1 FROM shopee_fleet_reports c JOIN shopee_assignments a ON a.fleet_id=c.fleet_id JOIN shopee_routes r ON r.id=a.route_id AND r.service_date=c.service_date WHERE a.id=$1 LIMIT 1',[req.params.id])).rowCount)return res.status(409).json({error:'已有報到歷程，不可刪除分派'});
     const result = await pool.query(
       `DELETE FROM shopee_assignments WHERE id = $1
@@ -643,6 +648,7 @@ router.delete("/fleets/:id", requireRole("admin"), async (req, res, next) => {
   try {
     const protectedRows=await pool.query(`SELECT 1 FROM fleet_work_orders WHERE fleet_id=$1
       UNION ALL SELECT 1 FROM penalty_cases WHERE fleet_id=$1
+      UNION ALL SELECT 1 FROM delivery_trips WHERE fleet_id=$1
       UNION ALL SELECT 1 FROM line_fleet_groups WHERE fleet_id=$1
       UNION ALL SELECT 1 FROM fleet_sheet_rows WHERE sheet_key='fleets' AND entity_id=$1 LIMIT 1`,[req.params.id]);
     if(protectedRows.rowCount)return res.status(409).json({error:'車隊已有任務、群組或雲端歷程，請改為停用以保留紀錄'});

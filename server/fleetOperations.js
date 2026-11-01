@@ -17,7 +17,8 @@ async function usedCapacity(db,fleetId,day,excludeId=null){
     COALESCE((SELECT SUM(CASE WHEN status='待回覆' THEN requested_trucks ELSE confirmed_trucks END)
       FROM fleet_work_orders WHERE fleet_id=$1 AND service_date=$2 AND status NOT IN ('已拒絕','已取消') AND ($3::bigint IS NULL OR id<>$3)),0)
     +COALESCE((SELECT SUM(CASE WHEN a.status='已確認' THEN a.confirmed_trucks ELSE a.requested_trucks END)
-      FROM shopee_assignments a JOIN shopee_routes r ON r.id=a.route_id WHERE a.fleet_id=$1 AND r.service_date=$2 AND a.status<>'已拒絕'),0) AS n`,[fleetId,day,excludeId])).rows[0].n;
+      FROM shopee_assignments a JOIN shopee_routes r ON r.id=a.route_id WHERE a.fleet_id=$1 AND r.service_date=$2 AND a.status<>'已拒絕'),0)
+    +COALESCE((SELECT count(*) FROM delivery_trips WHERE fleet_id=$1 AND service_date=$2 AND status<>'已取消' AND assignment_id IS NULL),0) AS n`,[fleetId,day,excludeId])).rows[0].n;
 }
 async function queueNotification(db,task,actor){
   const group=(await db.query('SELECT group_id FROM line_fleet_groups WHERE fleet_id=$1',[task.fleet_id])).rows[0];
@@ -61,6 +62,7 @@ async function handleFleetGroupEvent(db,event,eventId){
   const fleet=(await db.query(`SELECT f.id,f.name,f.status FROM line_fleet_groups g JOIN partner_fleets f ON f.id=g.fleet_id WHERE g.group_id=$1 FOR SHARE OF g,f`,[groupId])).rows[0];
   if(!fleet) return null;
   if(fleet.status!=='啟用') return '車隊已停用，請聯絡管理員。';
+  if(text==='門店車趟')return require('./deliveryLine').list(db,fleet);
   const keyword=await require('./lineKeywords').keywordReply(db,text);
   if(keyword!==null)return keyword;
   const actor={username:`LINE車隊:${fleet.id}:${userId.slice(-6)}`,role:'fleet'};

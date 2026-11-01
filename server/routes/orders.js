@@ -360,6 +360,7 @@ async function validateDispatch(order, driver, vehicle, keep = {}, db = pool) {
   if (vehicle && isPastDate(vehicle.maintenance)) errors.push("車輛保養已逾期,禁止派車");
 
   if (vehicle && vehicle.inspection_date && isPastDate(vehicle.inspection_date)) errors.push('車輛驗車已逾期');
+  if(driver&&vehicle&&(await db.query("SELECT 1 FROM delivery_trips WHERE status IN ('已派車','配送中') AND (driver_id=$1 OR vehicle_id=$2) LIMIT 1",[driver.id,vehicle.id])).rowCount)errors.push('司機或車輛已有未完成的蝦皮門店車趟');
   if (driver) {
     const leave=await db.query("SELECT 1 FROM attendance_records WHERE staff_type='driver' AND staff_id=$1 AND date=$2 AND status IN ('休假','曠職')",[driver.id,order.time.slice(0,10)]);
     if(leave.rowCount) errors.push('司機當日休假或曠職，禁止派車');
