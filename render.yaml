@@ -1,0 +1,27 @@
+{
+  "services": [
+    {
+      "type": "web",
+      "name": "wayan-line-staging",
+      "runtime": "docker",
+      "repo": "https://github.com/way0325-blip/Wayan",
+      "branch": "staging/render-staging-20261101",
+      "region": "singapore",
+      "plan": "free",
+      "autoDeployTrigger": "off",
+      "dockerfilePath": "./Dockerfile",
+      "dockerContext": ".",
+      "healthCheckPath": "/api/health",
+      "envVars": [
+        {"key": "WAYAN_ENV", "value": "staging"},
+        {"key": "STAGING_RENDER_POSTGRES_ID", "value": "dpg-dbiq06cs728c738089lg-a"},
+        {"key": "DATABASE_URL", "fromDatabase": {"name": "wayan-staging-db", "property": "connectionString"}},
+        {"key": "JWT_SECRET", "generateValue": true},
+        {"key": "ADMIN_USERNAME", "value": "wayan-owner"},
+        {"key": "ADMIN_PASSWORD", "generateValue": true},
+        {"key": "CORS_ORIGIN", "fromService": {"name": "wayan-line-staging", "type": "web", "envVarKey": "RENDER_EXTERNAL_URL"}},
+        {"key": "WAYAN_FLEET_SHEET_ID", "value": "17oSIbs0hGxY7m5UjPpCx42jCq73enoJxQg2bWHE6nHI"}
+      ]
+    }
+  ]
+}
