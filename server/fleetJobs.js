@@ -6,6 +6,7 @@ const {taskNumber}=require('./fleetOperations');
 const error=code=>Object.assign(new Error(code),{code});
 async function deliverLine(job){
   if(!isConfigured()) throw error('LINE_NOT_CONFIGURED');
+  if(job.payload.type==='delivery')return require('./deliveryLine').deliver(job);
   if(job.payload.type==='shopee')return deliverShopeeLine(job);
   const task=(await pool.query(`SELECT t.*,f.name AS fleet_name,f.status AS fleet_status,g.group_id
     FROM fleet_work_orders t JOIN partner_fleets f ON f.id=t.fleet_id LEFT JOIN line_fleet_groups g ON g.fleet_id=t.fleet_id WHERE t.id=$1`,[job.payload.taskId])).rows[0];
