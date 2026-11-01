@@ -5,7 +5,7 @@ const JSON_KEYS = ["locations", "container_sizes", "carriers", "line_group_ids",
 async function getSettings() {
   const { rows } = await pool.query("SELECT key, value FROM settings");
   const result = {
-    system_name: "港區星際運輸調度中心",
+    system_name: "運輸調度中心",
     announcement: "",
     locations: [],
     container_sizes: ["20 呎", "40 呎", "45 呎"],
