@@ -53,7 +53,7 @@ async function rowValues(key,id){
   }
   if(key==='incidents'){
     const r=(await pool.query('SELECT i.*,f.name AS fleet_name FROM fleet_incidents i JOIN partner_fleets f ON f.id=i.fleet_id WHERE i.id=$1',[id])).rows[0];
-    if(!r) throw error('RECORD_NOT_FOUND');return [caseNumber(r.id),r.fleet_id,r.fleet_name,r.delivery_trip_id?(await pool.query('SELECT task_code FROM delivery_trips WHERE id=$1',[r.delivery_trip_id])).rows[0].task_code:taskNumber(r.task_id),serial(r.created_at),r.kind,r.severity,r.status,r.description,r.handler,r.resolution,serial(r.updated_at)];
+    if(!r) throw error('RECORD_NOT_FOUND');return [caseNumber(r.id),r.fleet_id,r.fleet_name,r.delivery_trip_id?(await pool.query('SELECT task_code FROM delivery_trips WHERE id=$1',[r.delivery_trip_id])).rows[0].task_code:r.task_id?taskNumber(r.task_id):'未指定車趟',serial(r.created_at),r.kind,r.severity,r.status,r.description,r.handler,r.resolution,serial(r.updated_at)];
   }
   if(key==='history'){
     const r=(await pool.query('SELECT * FROM fleet_incident_history WHERE id=$1',[id])).rows[0];

@@ -150,16 +150,16 @@ router.get('/incidents',async(req,res,next)=>{
   try{
     const rows=(await pool.query(`SELECT i.*,f.name AS fleet_name,d.task_code FROM fleet_incidents i JOIN partner_fleets f ON f.id=i.fleet_id LEFT JOIN delivery_trips d ON d.id=i.delivery_trip_id
       WHERE ($1='' OR i.fleet_id=$1) AND i.id<$2::bigint AND ($3='' OR i.status=$3) ORDER BY i.id DESC LIMIT 101`,[fleetId,before,req.query.status||''])).rows;
-    res.json({items:rows.slice(0,100).map(i=>({...i,number:caseNumber(i.id),taskNumber:i.delivery_trip_id?i.task_code:taskNumber(i.task_id)})),nextCursor:rows.length>100?rows[99].id:null});
+    res.json({items:rows.slice(0,100).map(i=>({...i,number:caseNumber(i.id),taskNumber:i.delivery_trip_id?i.task_code:i.task_id?taskNumber(i.task_id):'未指定車趟'})),nextCursor:rows.length>100?rows[99].id:null});
   }catch(err){next(err);}
 });
 router.get('/incidents/:id',async(req,res,next)=>{
   if(!idOk(req.params.id))return res.status(400).json({error:'案件編號格式錯誤'});
   try{
-    const incident=(await pool.query('SELECT i.*,f.name AS fleet_name,d.task_code,COALESCE(t.title,d.task_name) AS task_title FROM fleet_incidents i JOIN partner_fleets f ON f.id=i.fleet_id LEFT JOIN fleet_work_orders t ON t.id=i.task_id LEFT JOIN delivery_trips d ON d.id=i.delivery_trip_id WHERE i.id=$1',[req.params.id])).rows[0];
+    const incident=(await pool.query(`SELECT i.*,f.name AS fleet_name,d.task_code,COALESCE(t.title,d.task_name,'車隊一般異常') AS task_title FROM fleet_incidents i JOIN partner_fleets f ON f.id=i.fleet_id LEFT JOIN fleet_work_orders t ON t.id=i.task_id LEFT JOIN delivery_trips d ON d.id=i.delivery_trip_id WHERE i.id=$1`,[req.params.id])).rows[0];
     if(!incident)return res.status(404).json({error:'找不到案件'});
     const history=(await pool.query('SELECT * FROM fleet_incident_history WHERE incident_id=$1 ORDER BY id',[incident.id])).rows;
-    res.json({incident:{...incident,number:caseNumber(incident.id),taskNumber:incident.delivery_trip_id?incident.task_code:taskNumber(incident.task_id)},history});
+    res.json({incident:{...incident,number:caseNumber(incident.id),taskNumber:incident.delivery_trip_id?incident.task_code:incident.task_id?taskNumber(incident.task_id):'未指定車趟'},history});
   }catch(err){next(err);}
 });
 router.post('/incidents',async(req,res,next)=>{

@@ -23,6 +23,7 @@ async function handleEvent(db, event, id) {
   const text = String(event.message.text || '').trim();
   const userId = event.source.userId;
   if (/^(說明|help|指令)$/i.test(text)) return HELP;
+  if (/^(異常回報|取消回報|異常進度)(?:\s|$)/.test(text))return '車隊異常請在已綁定的車隊LINE群組輸入「異常回報」。私人對話的任務異常仍須先綁定司機，使用「異常 訂單編號 說明」。';
   const bind = text.match(/^綁定\s+([A-Za-z0-9_-]{22})$/);
   if (bind) {
     const code = (await db.query('SELECT * FROM line_binding_codes WHERE code_hash=$1 AND expires_at>NOW() FOR UPDATE', [codeHash(bind[1])])).rows[0];
