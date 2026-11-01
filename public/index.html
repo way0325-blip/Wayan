@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Wayan｜個人營運控制平台</title>
+<title>運輸調度中心</title>
 
 <style>
 :root {
@@ -253,9 +253,9 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
 
 <section id="loginPage" class="login-page">
   <div class="login-box">
-    <div class="logo">🚀</div>
-    <h1 id="loginTitle">港區星際運輸調度中心</h1>
-    <p>PORT SPACE LOGISTICS CONTROL</p>
+    <div class="logo">🚚</div>
+    <h1 id="loginTitle">運輸調度中心</h1>
+    <p>TRANSPORT DISPATCH CENTER</p>
 
     <div id="loginError" class="alert hidden"></div>
 
@@ -278,7 +278,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
 <section id="app" class="app hidden">
   <aside class="sidebar">
     <div class="brand">
-      <strong id="brandName">🚀 港區星際運輸</strong>
+      <strong id="brandName">運輸調度中心</strong>
       <small>WAYAN · OPERATIONS</small>
     </div>
 
@@ -286,7 +286,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
     <button class="nav-btn" data-page="orders">📦 訂單與車趟</button>
     <button class="nav-btn" data-page="fleetOps">🤝 夥伴車隊營運</button>
     <button class="nav-btn" data-page="penaltyRules">📋 罰款規則管理</button>
-    <button class="nav-btn" data-page="shopee">🟢 蝦皮車隊需求</button>
+    <button class="nav-btn" data-page="shopee">🟢 蝦皮任務派單</button>
     <button class="nav-btn" data-page="drivers">👨‍✈️ 司機管理</button>
     <button class="nav-btn" data-page="vehicles">🚚 車輛管理</button>
     <button class="nav-btn" data-page="schedule">📅 班表</button>
@@ -882,7 +882,7 @@ let vehicles = [];
 let orders = [];
 let users = [];
 let alertsList = [];
-let settings = { systemName: "港區星際運輸調度中心", announcement: "", locations: [], containerSizes: ["20 呎", "40 呎", "45 呎"], carriers: [], lineGroupIds: [], shopeeVehicleTypes: ["3.5T", "11T", "17T"] };
+let settings = { systemName: "運輸調度中心", announcement: "", locations: [], containerSizes: ["20 呎", "40 呎", "45 呎"], carriers: [], lineGroupIds: [], shopeeVehicleTypes: ["3.5T", "11T", "17T"] };
 
 function getToken() { return localStorage.getItem("token"); }
 function getRole() { return localStorage.getItem("role"); }
@@ -1306,7 +1306,7 @@ async function resetUserPassword(id) {
 function applySettings() {
   document.title = settings.systemName;
   document.getElementById("loginTitle").textContent = settings.systemName;
-  document.getElementById("brandName").textContent = "🚀 " + settings.systemName;
+  document.getElementById("brandName").textContent = settings.systemName;
 
   const box = document.getElementById("announcementBox");
   box.textContent = settings.announcement ? "📢 " + settings.announcement : "";
@@ -1770,7 +1770,7 @@ function renderScheduleGrid() {
   <table>
     <thead>
       <tr>
-        <th style="position:sticky;left:0;background:#0d2038">姓名</th>
+        <th style="position:sticky;left:0;background:var(--panel2)">姓名</th>
         ${days.map(d => {
           const wd = weekdayNames[new Date(`${scheduleMonth}-${String(d).padStart(2, "0")}`).getDay()];
           return `<th style="text-align:center">${d}<br><span class="muted">${wd}</span></th>`;
@@ -1780,7 +1780,7 @@ function renderScheduleGrid() {
     <tbody>
       ${scheduleData.staff.map(s => `
       <tr>
-        <td style="position:sticky;left:0;background:#0b1d32">${escapeHTML(s.name)}</td>
+        <td style="position:sticky;left:0;background:var(--panel)">${escapeHTML(s.name)}</td>
         ${days.map(d => {
           const st = statusOf(s.id, d);
           return `<td style="text-align:center;cursor:pointer;padding:6px" onclick="cycleAttendance('${s.id}', ${d})">${st ? ATT_BADGE[st] : "<span class='muted'>·</span>"}</td>`;
@@ -2245,7 +2245,7 @@ let fleetMsgPreselectRouteId = null;
 // 伺服器已驗證過;這裡再擋一次,避免資料庫裡有不合格的值被渲染成可點的連結。不合格回傳 null
 function lineLinkHtml(link, label = "開啟 LINE") {
   if (!/^https:\/\/(?:[a-z0-9-]+\.)*line\.me(?:[\/?#]|$)|^https:\/\/lin\.ee(?:[\/?#]|$)/i.test(link || "")) return null;
-  return `<a class="action secondary small" style="text-decoration:none;display:inline-block;color:#fff" href="${escapeHTML(link)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+  return `<a class="action secondary small" style="text-decoration:none;display:inline-block;color:var(--text)" href="${escapeHTML(link)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
 }
 
 async function copyFromTextarea(textareaId, msgId) {
@@ -2514,7 +2514,7 @@ document.querySelectorAll(".nav-btn[data-page]").forEach(button => {
       drivers: "司機資料管理",
       vehicles: "車輛資料管理",
       schedule: "班表",
-      shopee: "蝦皮店到店・車隊需求",
+      shopee: "蝦皮任務派單",
       users: "後台管理",
       lineControl: "LINE 司機平台",
       fleetOps: "夥伴車隊營運管理",

@@ -161,7 +161,7 @@ async function initSchema() {
 
 async function seedSettings() {
   const defaults = {
-    system_name: "Wayan 個人營運控制平台",
+    system_name: "運輸調度中心",
     announcement: "",
     locations: JSON.stringify(["高雄港", "台中港", "基隆港", "台北港", "台中倉庫", "台南倉庫", "屏東物流中心"]),
     container_sizes: JSON.stringify(["20 呎", "40 呎", "40HQ", "45 呎"]),
