@@ -142,6 +142,7 @@ async function start() {
     const setup=await require('./stagingFleetBootstrap').setupStagingFleet(require('./db').pool);
     if(setup.status!=='disabled')console.log('STAGING_FLEET_SETUP',JSON.stringify(setup));
   } catch(err) { console.error('STAGING_FLEET_SETUP_FAILED',err.code||'SETUP_FAILED'); }
+  try{const checkins=await require('./stagingCheckinSetup').setupStagingCheckins(require('./db').pool);if(checkins.status!=='disabled')console.log('STAGING_CHECKIN_SETUP',JSON.stringify(checkins));}catch(err){console.error('STAGING_CHECKIN_SETUP_FAILED',err.code||'SETUP_FAILED');}
   require('./fleetJobs').startFleetWorker();
   app.listen(PORT, () => {
     console.log(`港區星際運輸調度中心伺服器已啟動: http://localhost:${PORT}`);

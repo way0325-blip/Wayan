@@ -1,0 +1,25 @@
+const {transaction,audit}=require('./transaction');const {assertStagingDatabase}=require('./stagingSafety');const {isValidDateKey}=require('./dates');
+async function setupStagingCheckins(pool,env=process.env){const date=env.STAGING_CHECKIN_SETUP_DATE,requestId=env.STAGING_CHECKIN_SETUP_REQUEST_ID,name=env.STAGING_CHECKIN_SETUP_FLEET_NAME;if(!date&&!requestId&&!name)return {status:'disabled'};assertStagingDatabase(env);if(!isValidDateKey(date)||!/^[0-9a-f-]{36}$/i.test(requestId||'')||!name)throw Error('STAGING_CHECKIN_CONFIG_INVALID');
+ return transaction(pool,async db=>{await db.query('SELECT pg_advisory_xact_lock(870033)');await db.query('SELECT pg_advisory_xact_lock(870032)');const key='staging-checkins-setup:'+requestId,prior=(await db.query('SELECT value FROM settings WHERE key=$1',[key])).rows[0];if(prior)return {...JSON.parse(prior.value),status:'existing'};
+  const fleets=(await db.query("SELECT f.*,g.group_id FROM partner_fleets f JOIN line_fleet_groups g ON g.fleet_id=f.id JOIN line_group_registry r ON r.group_id=g.group_id WHERE f.name=$1 AND f.status='啟用' AND r.bot_present=TRUE",[name])).rows;if(fleets.length!==1)return {status:'fleet-or-group-needs-review'};const fleet=fleets[0];
+  const raw=(await db.query('SELECT value FROM settings WHERE key=$1',['delivery-demo-current:'+date])).rows[0];if(!raw)return {status:'no-demo-batch'};const demo=JSON.parse(raw.value),ids=demo.tripIds;
+  const trips=(await db.query('SELECT * FROM delivery_trips WHERE id=ANY($1::bigint[]) ORDER BY task_code FOR UPDATE',[ids])).rows;
+  if(trips.length!==30||trips.some(t=>!t.is_simulated||t.service_date!==date||t.status!=='待派車'||t.fleet_id||t.driver_id||t.vehicle_id)||(await db.query('SELECT 1 FROM delivery_checkins WHERE trip_id=ANY($1::bigint[]) LIMIT 1',[ids])).rowCount)return {status:'demo-already-in-use'};
+  const actor={username:'使用者授權中文報到設定',role:'admin'},yangmei=trips.filter(t=>t.warehouse_id==='YANGMEI'),guanyin=trips.filter(t=>t.warehouse_id==='GUANYIN'),dayuanTrips=trips.filter(t=>t.warehouse_id==='DAYUAN');
+  if(yangmei.length===20&&guanyin.length===10&&!dayuanTrips.length){
+   const dayuan=(await db.query("SELECT * FROM delivery_warehouses WHERE id='DAYUAN'")).rows[0],routeId=demo.prefix+'RDAY';
+   await db.query("INSERT INTO shopee_routes(id,service_date,origin,destination,vehicle_type,required_trucks,note,is_simulated) VALUES($1,$2,$3,'桃園大園線','11T',10,'[模擬]使用者改為三倉各10車',TRUE)",[routeId,date,dayuan.name]);
+   await db.query('UPDATE shopee_routes SET required_trucks=10 WHERE id=$1 AND is_simulated=TRUE',[yangmei[0].demand_route_id]);
+   for(const [i,t] of yangmei.slice(10).entries()){await db.query("UPDATE delivery_orders SET warehouse_id='DAYUAN' WHERE id IN (SELECT order_id FROM delivery_trip_stops WHERE trip_id=$1)",[t.id]);await db.query("UPDATE delivery_trips SET warehouse_id='DAYUAN',warehouse_address=$2,demand_route_id=$3,task_name='桃園大園線 '||$4,updated_at=clock_timestamp() WHERE id=$1",[t.id,dayuan.address,routeId,String(i+1)+'車']);await audit(db,actor,'調整模擬取貨倉','蝦皮門店車趟',t.id,'依使用者指示：改為楊梅、大園、觀音各10；原車趟編號保留');}
+   demo.routeIds.push(routeId);
+  }else if(yangmei.length!==10||guanyin.length!==10||dayuanTrips.length!==10)return {status:'demo-layout-needs-review'};
+  const routes=(await db.query('SELECT * FROM shopee_routes WHERE id=ANY($1::text[])',[demo.routeIds])).rows;
+  for(const r of routes)await db.query('INSERT INTO fleet_routes(fleet_id,origin,destination,vehicle_type,max_trucks) VALUES($1,$2,$3,$4,10) ON CONFLICT(fleet_id,origin,destination,vehicle_type) DO NOTHING',[fleet.id,r.origin,r.destination,r.vehicle_type]);
+  const dispatch=require('./deliveryDispatch');let board=await dispatch.board(db,date);let selected=board.trips.filter(t=>ids.map(String).includes(String(t.id)));
+  await dispatch.assign(db,{reason:'使用者建立三倉各10車的LINE報到測試，僅限模擬',items:selected.map(t=>({tripId:t.id,version:t.dispatch_version,mode:'fleet',fleetId:fleet.id,groupId:fleet.group_id}))},actor,(actor,...args)=>audit(db,actor,...args));
+  board=await dispatch.board(db,date);selected=board.trips.filter(t=>ids.map(String).includes(String(t.id)));const items=[];for(const [warehouse,prefix] of [['YANGMEI','楊梅'],['DAYUAN','大園'],['GUANYIN','觀音']])selected.filter(t=>t.warehouse_id===warehouse).sort((a,b)=>a.task_code.localeCompare(b.task_code)).forEach((t,i)=>items.push({tripId:t.id,version:t.dispatch_version,alias:prefix+(i+1)}));
+  const result=await require('./deliveryAliases').setAliases(db,{items,reason:'三倉各10車中文報到代號；保留原車趟編號'},actor);demo.routes=3;await db.query('UPDATE settings SET value=$2 WHERE key=$1',['delivery-demo-current:'+date,JSON.stringify(demo)]);
+  const status={status:'created',date,fleet:name,trips:30,aliases:result.items.map(i=>i.alias),batchKey:result.batchKey};await db.query('INSERT INTO settings(key,value) VALUES($1,$2)',[key,JSON.stringify(status)]);return status;
+ });
+}
+module.exports={setupStagingCheckins};
