@@ -284,7 +284,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
 
     <button class="nav-btn active" data-page="dashboard">📊 今日儀表板</button>
     <button class="nav-btn" data-page="orders">📦 蝦皮店到店</button>
-    <button class="nav-btn" data-page="fleetOps">🤝 夥伴車隊營運</button>
+    <button class="nav-btn" data-page="fleetOps">🤝 夥伴車隊／LINE 動態</button>
     <button class="nav-btn" data-page="penaltyRules">📋 罰款規則管理</button>
     <button class="nav-btn" data-page="shopee">🟢 蝦皮任務派單</button>
     <button class="nav-btn" data-page="drivers">👨‍✈️ 司機管理</button>
@@ -355,6 +355,12 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
 
     <section id="fleetOps" class="page">
   <div class="control-hero"><div><span class="eyebrow">WAYAN / PARTNER FLEETS</span><h1>各車隊，一起掌握。</h1><p>群組任務、異常回報與雲端紀錄，在同一處追蹤。</p></div><button class="action secondary" id="fleetOpsRefresh">重新整理</button></div>
+  <div class="panel" id="fleetLineWorkspace" style="margin-bottom:16px">
+    <h2>LINE 綁定與車隊動態</h2>
+    <p id="fleetDataSource" class="control-notice" role="status">本頁顯示目前登入平台收到的 LINE 資料。</p>
+    <div class="control-toolbar"><button class="action" data-fleet-section="fleetDirectory">車隊名冊／LINE 綁定</button><button class="action secondary admin-only hidden" data-fleet-section="groupDirectory">LINE 群組清單</button><button class="action secondary" data-fleet-section="fleetActivityPanel">各車隊 LINE 動態</button><a id="fleetCloudWorkspace" class="action secondary hidden" href="https://wayan-line-staging.onrender.com/" target="_blank" rel="noopener noreferrer">開啟 LINE 雲端測試平台</a></div>
+    <p class="hint">管理員可在車隊名冊取得綁定碼，或編輯車隊選擇已驗證的群組。調度人員可查看綁定狀態與 LINE 動態。</p>
+  </div>
   <p id="fleetOpsMessage" class="control-notice" role="status" aria-live="polite"></p>
   <div id="fleetKpis" class="control-grid"></div><p id="fleetConnection" class="hint"></p>
   <details class="panel"><summary>LINE 異常回報怎麼使用</summary><p>請在已綁定車隊的群組輸入「異常回報」，再於10分鐘內傳送異常內容。每位成員的填報分開記錄，取消請輸入「取消回報」。</p><p>一次填報範例：<code>異常回報 延誤 大園倉等候裝貨超過30分鐘</code></p><p>Bot回覆案件編號後，可輸入 <code>異常進度 I000001</code> 查詢。案件已建立不代表Google Sheets已完成同步，請以雲端同步狀態為準。</p><p>可選類型：延誤、車輛異常、貨損、事故、其他。未填類型視為其他；已有車趟的回報仍可使用「車趟異常 編號 類型 說明」。</p></details>
@@ -870,7 +876,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
 <div id="opsDetailModal" class="modal hidden"><div class="modal-box" style="max-width:1000px"><div class="modal-head"><h3 id="opsDetailTitle"></h3><button class="close" onclick="closeModal('opsDetailModal')">×</button></div>
 <p id="opsCommand" style="white-space:pre-wrap"></p><form id="opsCheckinForm"><p id="opsFormError" class="opsFormError control-error" role="alert"></p><div class="form-grid"><div class="field"><label>目前累計報到總車數</label><input id="opsTotal" type="number" min="0" max="200000" step="1" required></div><div class="field"><label>補登／更正原因（必填）</label><input id="opsReportNote" maxlength="500" required></div></div><button class="primary" id="opsCheckinSave">登記累計總數</button></form><div id="opsCheckinRows" class="table-wrap"></div></div></div>
 
-<script src="/storeDelivery.js"></script><script src="/fleets.js"></script><script src="/lineKeywords.js"></script><script src="/lineActivity.js"></script>
+<script src="/storeDelivery.js"></script><script src="/fleets.js?v=fleet-line-workspace-1"></script><script src="/lineKeywords.js"></script><script src="/lineActivity.js?v=fleet-line-workspace-1"></script>
 <script src="/operations.js"></script><script src="/penalties.js"></script>
 <script>
 const todayEl = document.getElementById("today");
