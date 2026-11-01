@@ -57,7 +57,7 @@ async function vehicleTypeError(type) {
 // ---------- 需求(路線)----------
 
 const ROUTE_SUMMARY_SQL = `
-  SELECT r.*,
+  SELECT r.*, (SELECT count(*)::int FROM delivery_trips t WHERE t.demand_route_id=r.id AND t.driver_id IS NOT NULL AND t.fleet_id IS NULL AND t.status<>'已取消') AS own_trucks,
     COALESCE(SUM(CASE WHEN a.status = '已確認' THEN a.confirmed_trucks END), 0)::int AS confirmed_trucks,
     COALESCE(SUM(CASE WHEN a.status = '待回覆' THEN a.requested_trucks END), 0)::int AS pending_trucks
   FROM shopee_routes r
@@ -65,7 +65,7 @@ const ROUTE_SUMMARY_SQL = `
 `;
 
 function serializeRoute(row) {
-  const shortage = Math.max(row.required_trucks - row.confirmed_trucks, 0);
+  const shortage = Math.max(row.required_trucks - row.confirmed_trucks - (row.own_trucks||0), 0);
   return {
     id: row.id,
     serviceDate: row.service_date,
@@ -75,6 +75,7 @@ function serializeRoute(row) {
     vehicleType: row.vehicle_type,
     requiredTrucks: row.required_trucks,
     confirmedTrucks: row.confirmed_trucks,
+    ownTrucks:row.own_trucks||0,
     pendingTrucks: row.pending_trucks,
     shortage,
     status: shortage === 0 ? "已補滿" : row.pending_trucks > 0 ? "待車隊回覆" : "待分派",
@@ -207,6 +208,7 @@ router.patch("/routes/:id", async (req, res, next) => {
       value.origin !== current.origin ||
       value.destination !== current.destination ||
       value.vehicleType !== current.vehicle_type;
+    const planned=Number((await pool.query("SELECT count(*) n FROM delivery_trips WHERE demand_route_id=$1 AND status<>'已取消'",[current.id])).rows[0].n);if(planned&&(identityChanged||value.requiredTrucks<planned))return res.status(409).json({error:'已有連結車趟，不可改日期路線或將需求降至已建立車趟數以下'});
     if (identityChanged) {
       const has = await pool.query("SELECT 1 FROM shopee_assignments WHERE route_id = $1 LIMIT 1", [current.id]);
       if (has.rows.length) {
@@ -231,6 +233,7 @@ router.patch("/routes/:id", async (req, res, next) => {
 
 router.delete("/routes/:id", requireRole("admin"), async (req, res, next) => {
   try {
+    if((await pool.query("SELECT 1 FROM delivery_trips WHERE demand_route_id=$1 LIMIT 1",[req.params.id])).rowCount)return res.status(409).json({error:"已有門店車趟歷程，不可刪除路線"});
     if((await pool.query('SELECT 1 FROM shopee_fleet_reports c JOIN shopee_assignments a ON a.fleet_id=c.fleet_id JOIN shopee_routes r ON r.id=a.route_id AND r.service_date=c.service_date WHERE a.route_id=$1 LIMIT 1',[req.params.id])).rowCount)return res.status(409).json({error:'已有報到歷程，不可刪除路線'});
     if((await pool.query('SELECT 1 FROM delivery_trips t JOIN shopee_assignments a ON a.id=t.assignment_id WHERE a.route_id=$1 LIMIT 1',[req.params.id])).rowCount)return res.status(409).json({error:'已有連結門店車趟，請保留需求歷程'});
     const result = await pool.query("DELETE FROM shopee_routes WHERE id = $1 RETURNING origin, destination", [req.params.id]);
@@ -350,8 +353,12 @@ router.put("/routes/:id/assignments", async (req, res, next) => {
     if (invalid.length) return res.status(400).json({ error: "輸入驗證失敗,本次未寫入任何資料", details: invalid });
     if (problems.length) return res.status(409).json({ error: "分派失敗,本次未寫入任何資料", details: problems });
 
+    const current=(await pool.query("SELECT fleet_id,requested_trucks,status FROM shopee_assignments WHERE route_id=$1",[route.id])).rows;
+    const reserved=current.filter(a=>!plan.some(p=>p.fleetId===a.fleet_id)&&a.status!=='已拒絕').reduce((n,a)=>n+a.requested_trucks,0)+plan.reduce((n,p)=>n+p.n,0);
+    if((await pool.query('SELECT 1 FROM delivery_trips WHERE demand_route_id=$1 LIMIT 1',[route.id])).rowCount&&reserved+await require('../deliveryDispatch').ownCount(pool,route.id)>route.required_trucks)return res.status(409).json({error:'車隊要求與自有車合計超過路線需求'});
     for(const p of plan){
-      const existing=(await pool.query('SELECT id,requested_trucks FROM shopee_assignments WHERE route_id=$1 AND fleet_id=$2',[route.id,p.fleetId])).rows[0];
+      const existing=(await pool.query('SELECT id,requested_trucks,delivery_managed FROM shopee_assignments WHERE route_id=$1 AND fleet_id=$2',[route.id,p.fleetId])).rows[0];
+      if(existing?.delivery_managed){const planned=Number((await pool.query("SELECT count(*) n FROM delivery_trips WHERE assignment_id=$1 AND status<>'已取消'",[existing.id])).rows[0].n);if(p.n!==planned)return res.status(409).json({error:'門店車趟管理的分派請在蝦皮店到店調整'});}
       if(existing&&existing.requested_trucks!==p.n&&Number(await require('../shopeeCheckins').reportedTotal(pool,p.fleetId,route.service_date))>0)return res.status(409).json({error:'已有報到紀錄，請先由管理員核對作廢後再變更需求趟數'});
     }
 
@@ -414,11 +421,12 @@ router.patch("/assignments/:id", async (req, res, next) => {
         return res.status(400).json({ error: `承接車數必須是 0 到 ${a.requested_trucks} 的整數(0 代表拒絕)` });
       }
       const others = (await pool.query("SELECT COALESCE(SUM(confirmed_trucks),0)::int AS n FROM shopee_assignments WHERE route_id=$1 AND id<>$2 AND status='已確認'", [a.route_id,a.id])).rows[0].n;
-      if (others+n > route.required_trucks) return res.status(409).json({error:'承接總車數不得超過路線需求'});
+      if (others+n+await require('../deliveryDispatch').ownCount(pool,route.id) > route.required_trucks) return res.status(409).json({error:'承接總車數不得超過路線需求'});
       await pool.query(
         "UPDATE shopee_assignments SET confirmed_trucks = $1, status = $2, updated_at = NOW() WHERE id = $3",
         [n, n > 0 ? "已確認" : "已拒絕", a.id]
       );
+      await require('../deliveryDispatch').syncFleetAcceptance(pool,a.id,req.user);
       await logAction(req, n > 0 ? "確認承接" : "拒絕承接", "蝦皮承接", a.route_id, `${a.fleet_name} ${n}/${a.requested_trucks} 車`);
     }
     res.json({ route: await getRouteSummary(pool, a.route_id) });

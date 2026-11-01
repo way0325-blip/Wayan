@@ -247,6 +247,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
 }
 </style>
 <link rel="stylesheet" href="/control.css">
+<link rel="stylesheet" href="/fleetChat.css?v=chat-1">
 </head>
 
 <body>
@@ -876,7 +877,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
 <div id="opsDetailModal" class="modal hidden"><div class="modal-box" style="max-width:1000px"><div class="modal-head"><h3 id="opsDetailTitle"></h3><button class="close" onclick="closeModal('opsDetailModal')">×</button></div>
 <p id="opsCommand" style="white-space:pre-wrap"></p><form id="opsCheckinForm"><p id="opsFormError" class="opsFormError control-error" role="alert"></p><div class="form-grid"><div class="field"><label>目前累計報到總車數</label><input id="opsTotal" type="number" min="0" max="200000" step="1" required></div><div class="field"><label>補登／更正原因（必填）</label><input id="opsReportNote" maxlength="500" required></div></div><button class="primary" id="opsCheckinSave">登記累計總數</button></form><div id="opsCheckinRows" class="table-wrap"></div></div></div>
 
-<script src="/storeDelivery.js"></script><script src="/fleets.js?v=fleet-line-workspace-1"></script><script src="/lineKeywords.js"></script><script src="/lineActivity.js?v=fleet-line-workspace-1"></script>
+<script src="/storeDelivery.js?v=aliases-1"></script><script src="/deliveryDispatch.js?v=aliases-1"></script><script src="/fleets.js?v=fleet-line-workspace-1"></script><script src="/lineKeywords.js"></script><script src="/lineActivity.js?v=chat-1"></script>
 <script src="/operations.js"></script><script src="/penalties.js"></script>
 <script>
 const todayEl = document.getElementById("today");
@@ -1860,6 +1861,7 @@ function shiftShopeeDate(delta) {
   d.setDate(d.getDate() + delta);
   el.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   document.getElementById("shopeeAllDates").checked = false;
+  document.dispatchEvent(new CustomEvent('wayan:shopee-date',{detail:el.value}));
   loadShopeeRoutes();
 }
 
@@ -2511,9 +2513,11 @@ document.getElementById("logoutBtn").addEventListener("click", logout);
 document.querySelectorAll(".nav-btn[data-page]").forEach(button => {
   button.addEventListener("click", () => {
     document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
-    button.classList.add("active");
+    const targetPage=button.dataset.page==="shopee"?"orders":button.dataset.page;
+    document.querySelector(`.nav-btn[data-page="${targetPage}"]`).classList.add("active");
     document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
-    document.getElementById(button.dataset.page).classList.add("active");
+    document.getElementById(targetPage).classList.add("active");
+    if(targetPage==="orders")window.ShopeeWorkspace?.show(button.dataset.page==="shopee"?"demand":"delivery");
 
     const titles = {
       dashboard: "今日營運儀表板",
@@ -2527,7 +2531,7 @@ document.querySelectorAll(".nav-btn[data-page]").forEach(button => {
       fleetOps: "夥伴車隊營運管理",
       penaltyRules: "罰款規則與版本覆核",
     };
-    document.getElementById("pageTitle").textContent = titles[button.dataset.page];
+    document.getElementById("pageTitle").textContent = titles[targetPage];
     if (button.dataset.page === "schedule") loadSchedule();
     if (button.dataset.page === "shopee") loadShopee();
   });
@@ -2849,5 +2853,6 @@ loadPublicSettings();
 })();
 </script>
 
+<script src="/shopeeWorkspace.js?v=unified-1"></script>
 </body>
 </html>

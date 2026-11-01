@@ -62,10 +62,10 @@ async function handleFleetGroupEvent(db,event,eventId){
   const fleet=(await db.query(`SELECT f.id,f.name,f.status FROM line_fleet_groups g JOIN partner_fleets f ON f.id=g.fleet_id WHERE g.group_id=$1 FOR SHARE OF g,f`,[groupId])).rows[0];
   if(!fleet)return /^(異常回報|取消回報|異常進度)(?:\s|$)/.test(text)?'此群組尚未綁定車隊，請聯絡管理員綁定後再回報。':null;
   if(fleet.status!=='啟用') return '車隊已停用，請聯絡管理員。';
-  const intake=await require('./lineIncidentIntake').handle(db,event,eventId,fleet);if(intake!==null)return intake;
-  if(text==='門店車趟')return require('./deliveryLine').list(db,fleet);
   const checkin=await require('./deliveryCheckins').handle(db,text,fleet,userId,eventId);
   if(checkin!==null)return checkin;
+  const intake=await require('./lineIncidentIntake').handle(db,event,eventId,fleet);if(intake!==null)return intake;
+  if(text==='門店車趟')return require('./deliveryLine').list(db,fleet);
   const keyword=await require('./lineKeywords').keywordReply(db,text);
   if(keyword!==null)return keyword;
   const actor={username:`LINE車隊:${fleet.id}:${userId.slice(-6)}`,role:'fleet'};

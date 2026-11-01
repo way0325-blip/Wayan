@@ -21,7 +21,7 @@ test('incremental migration can run twice without losing operational data',async
   const before=(await pool.query('SELECT count(*)::int AS n FROM orders')).rows[0].n;
   await migrate(pool);await migrate(pool);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM orders')).rows[0].n,before);
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM schema_migrations')).rows[0].n,7);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM schema_migrations')).rows[0].n,9);
 });
 test('summary requires authentication and validates calendar dates',async()=>{
   assert.equal((await api('GET','/api/control/summary',undefined,null)).status,401);
