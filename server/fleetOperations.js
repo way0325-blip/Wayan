@@ -32,11 +32,11 @@ async function queueNotification(db,task,actor){
   return {queued:result.rowCount===1,duplicate:result.rowCount===0};
 }
 async function addIncident(db,task,kind,description,actor,eventId=null){
-  const incident=(await db.query(`INSERT INTO fleet_incidents(task_id,fleet_id,line_event_id,kind,severity,description,reported_by,delivery_trip_id)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,[task.delivery?null:task.id,task.fleet_id,eventId,kind,kind==='事故'?'緊急':'一般',description,actor.username,task.delivery?task.id:null])).rows[0];
+  const incident=(await db.query(`INSERT INTO fleet_incidents(task_id,fleet_id,line_event_id,kind,severity,description,reported_by,delivery_trip_id,report_scope)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,[task.delivery||task.general?null:task.id,task.fleet_id,eventId,kind,kind==='事故'?'緊急':'一般',description,actor.username,task.delivery?task.id:null,task.general?'車隊':'任務'])).rows[0];
   const history=(await db.query(`INSERT INTO fleet_incident_history(incident_id,actor,action,next_status,note)
     VALUES($1,$2,'建立回報','待處理',$3) RETURNING id`,[incident.id,actor.username,description])).rows[0];
-  await audit(db,actor,'建立異常','車隊異常',incident.id,`${kind} ${taskNumber(task.id)}`);
+  await audit(db,actor,'建立異常','車隊異常',incident.id,`${kind} ${task.general?'車隊回報':task.delivery?'D'+task.id:taskNumber(task.id)}`);
   await enqueueSheet(db,'incidents',incident.id);await enqueueSheet(db,'history',history.id);
   return incident;
 }
@@ -60,8 +60,9 @@ async function handleFleetGroupEvent(db,event,eventId){
   }
   await db.query('SELECT pg_advisory_xact_lock(870033)');
   const fleet=(await db.query(`SELECT f.id,f.name,f.status FROM line_fleet_groups g JOIN partner_fleets f ON f.id=g.fleet_id WHERE g.group_id=$1 FOR SHARE OF g,f`,[groupId])).rows[0];
-  if(!fleet) return null;
+  if(!fleet)return /^(異常回報|取消回報|異常進度)(?:\s|$)/.test(text)?'此群組尚未綁定車隊，請聯絡管理員綁定後再回報。':null;
   if(fleet.status!=='啟用') return '車隊已停用，請聯絡管理員。';
+  const intake=await require('./lineIncidentIntake').handle(db,event,eventId,fleet);if(intake!==null)return intake;
   if(text==='門店車趟')return require('./deliveryLine').list(db,fleet);
   const checkin=await require('./deliveryCheckins').handle(db,text,fleet,userId,eventId);
   if(checkin!==null)return checkin;
