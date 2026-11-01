@@ -58,6 +58,7 @@ async function handleShopeeGroup(db,text,fleet,actor,eventId){
     const linked=Number((await db.query("SELECT count(*) n FROM delivery_trips WHERE assignment_id=$1 AND status<>'已取消'",[a.id])).rows[0].n);if(a.delivery_managed&&n<linked)return '已規劃車趟多於承接數，請調度先調整分派再承接。';
   }else if(!detail?.trim()||detail.length>500)return '拒絕任務請提供 1～500 字原因。';
   await db.query('UPDATE shopee_assignments SET confirmed_trucks=$2,status=$3,updated_at=clock_timestamp() WHERE id=$1',[a.id,n,n?'已確認':'已拒絕']);
+  await require('./deliveryDispatch').syncFleetAcceptance(db,a.id,actor);
   await audit(db,actor,kind,'蝦皮承接',a.id,detail);return `${number(a.id)} 已登記${kind} ${n} 趟。回報今日累計總車數請輸入「蝦皮報到 總數」。`;
 }
 module.exports={assignment,reportTotal,reportedTotal,handleShopeeGroup,queueShopeeNotification,number};

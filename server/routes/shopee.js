@@ -426,6 +426,7 @@ router.patch("/assignments/:id", async (req, res, next) => {
         "UPDATE shopee_assignments SET confirmed_trucks = $1, status = $2, updated_at = NOW() WHERE id = $3",
         [n, n > 0 ? "已確認" : "已拒絕", a.id]
       );
+      await require('../deliveryDispatch').syncFleetAcceptance(pool,a.id,req.user);
       await logAction(req, n > 0 ? "確認承接" : "拒絕承接", "蝦皮承接", a.route_id, `${a.fleet_name} ${n}/${a.requested_trucks} 車`);
     }
     res.json({ route: await getRouteSummary(pool, a.route_id) });

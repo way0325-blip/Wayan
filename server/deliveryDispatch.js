@@ -16,6 +16,11 @@ async function board(db,day,fleet=''){
  return {date:day,trips,routes:routes.map(r=>{const list=trips.filter(t=>t.demand_route_id===r.id&&t.status!=='已取消');return {...r,visible_trips:list.length,assigned:list.filter(t=>t.fleet_id||t.driver_id).length,own:list.filter(t=>t.driver_id&&!t.fleet_id).length,reported:list.reduce((n,t)=>n+t.checked_in,0)};}),truncated:trips.length===1000};
 }
 async function ownCount(db,routeId){return Number((await db.query("SELECT count(*) n FROM delivery_trips WHERE demand_route_id=$1 AND driver_id IS NOT NULL AND fleet_id IS NULL AND status<>'已取消'",[routeId])).rows[0].n);}
+async function syncFleetAcceptance(db,id,actor){
+ const a=(await db.query('SELECT * FROM shopee_assignments WHERE id=$1',[id])).rows[0];if(!a||a.status!=='已確認')return;
+ const rows=(await db.query("UPDATE delivery_trips SET status='已派車',updated_at=clock_timestamp() WHERE assignment_id=$1 AND demand_route_id IS NOT NULL AND fleet_id=$2 AND status='待派車' RETURNING id",[a.id,a.fleet_id])).rows;
+ for(const t of rows)await require('./transaction').audit(db,actor,'車隊承接同步派車','蝦皮門店車趟',t.id,'承接編號'+a.id);
+}
 async function syncAssignments(db,routeId,actor){
  const route=(await db.query('SELECT * FROM shopee_routes WHERE id=$1 FOR UPDATE',[routeId])).rows[0];if(!route)fail('路線需求不存在');
  const all=(await db.query("SELECT * FROM delivery_trips WHERE demand_route_id=$1 AND status<>'已取消'",[routeId])).rows;
@@ -24,14 +29,15 @@ async function syncAssignments(db,routeId,actor){
  const fleetIds=new Set([...all.map(t=>t.fleet_id).filter(Boolean),...assignments.filter(a=>a.delivery_managed).map(a=>a.fleet_id)]);
  for(const fleetId of fleetIds){
   const list=all.filter(t=>t.fleet_id===fleetId),n=list.length,a=assignments.find(a=>a.fleet_id===fleetId);
-  if(a&&!a.delivery_managed){if(!n)continue;if(a.status==='已拒絕'||n>(a.status==='已確認'?a.confirmed_trucks:a.requested_trucks))fail('超過既有車隊承接數，請先在蝦皮任務派單調整');await db.query('UPDATE delivery_trips SET assignment_id=$2 WHERE demand_route_id=$1 AND fleet_id=$3 AND status<>\'已取消\'',[routeId,a.id,fleetId]);continue;}
-  if(a&&a.requested_trucks===n&&a.status!=='已拒絕'){await db.query("UPDATE delivery_trips SET assignment_id=$2 WHERE demand_route_id=$1 AND fleet_id=$3 AND status<>'已取消'",[routeId,a.id,fleetId]);continue;}
+  if(a&&!a.delivery_managed){if(!n)continue;if(a.status==='已拒絕'||n>(a.status==='已確認'?a.confirmed_trucks:a.requested_trucks))fail('超過既有車隊承接數，請先在蝦皮任務派單調整');await db.query('UPDATE delivery_trips SET assignment_id=$2 WHERE demand_route_id=$1 AND fleet_id=$3 AND status<>\'已取消\'',[routeId,a.id,fleetId]);await syncFleetAcceptance(db,a.id,actor);continue;}
+  if(a&&a.requested_trucks===n&&a.status!=='已拒絕'){await db.query("UPDATE delivery_trips SET assignment_id=$2 WHERE demand_route_id=$1 AND fleet_id=$3 AND status<>'已取消'",[routeId,a.id,fleetId]);await syncFleetAcceptance(db,a.id,actor);continue;}
+  if(a&&(await db.query("SELECT 1 FROM delivery_trips t WHERE t.assignment_id=$1 AND (t.status IN ('配送中','已完成') OR EXISTS(SELECT 1 FROM delivery_checkins c WHERE c.trip_id=t.id)) LIMIT 1",[a.id])).rowCount)fail('此承接已有配送或報到，請由主管處理後再調整數量');
   if(Number(await require('./shopeeCheckins').reportedTotal(db,fleetId,route.service_date))>0)fail('車隊已有當日報到總數，請先由主管核對再調整');
   if(!n){if(a)await db.query("UPDATE shopee_assignments SET status='已拒絕',confirmed_trucks=0,updated_at=clock_timestamp() WHERE id=$1",[a.id]);continue;}
   const cap=(await db.query('SELECT max_trucks FROM fleet_routes WHERE fleet_id=$1 AND origin=$2 AND destination=$3 AND vehicle_type=$4 AND active=TRUE',[fleetId,route.origin,route.destination,route.vehicle_type])).rows[0];
   if(!cap||n>cap.max_trucks)fail('車隊未設定此路線或超過路線承接上限，請先設定車隊可承接路線');
   const item=(await db.query(`INSERT INTO shopee_assignments(route_id,fleet_id,requested_trucks,delivery_managed) VALUES($1,$2,$3,TRUE) ON CONFLICT(route_id,fleet_id) DO UPDATE SET requested_trucks=EXCLUDED.requested_trucks,confirmed_trucks=0,status='待回覆',updated_at=clock_timestamp() RETURNING id`,[routeId,fleetId,n])).rows[0];
-  await db.query("UPDATE delivery_trips SET assignment_id=$2 WHERE demand_route_id=$1 AND fleet_id=$3 AND status<>'已取消'",[routeId,item.id,fleetId]);
+  await db.query("UPDATE delivery_trips SET assignment_id=$2,status=CASE WHEN status='已派車' THEN '待派車' ELSE status END,updated_at=clock_timestamp() WHERE demand_route_id=$1 AND fleet_id=$3 AND status<>'已取消'",[routeId,item.id,fleetId]);
  }
  const reserved=Number((await db.query("SELECT COALESCE(SUM(CASE WHEN status='已確認' THEN confirmed_trucks ELSE requested_trucks END),0) n FROM shopee_assignments WHERE route_id=$1 AND status<>'已拒絕'",[routeId])).rows[0].n);
  if(reserved+all.filter(t=>t.driver_id&&!t.fleet_id).length>route.required_trucks)fail('車隊承接與自有車合計超過路線需求');
@@ -92,4 +98,4 @@ function register(router,db,logAction,admin){const wrap=fn=>async(req,res,next)=
  router.post('/dispatch-plan',wrap(async(req,res)=>res.json(await assign(db,req.body,req.user,(actor,...args)=>logAction(req,...args)))));
  router.post('/demo-orders',admin,wrap(async(req,res)=>res.status(201).json(await simulate(db,req.body,req.user,(actor,...args)=>logAction(req,...args)))));
 }
-module.exports={register,board,assign,simulate,syncAssignments,ownCount};
+module.exports={register,board,assign,simulate,syncAssignments,ownCount,syncFleetAcceptance};
