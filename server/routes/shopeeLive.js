@@ -10,14 +10,15 @@ router.get('/',async(req,res,next)=>{try{
     SELECT a.*,r.service_date,r.origin,r.destination,r.vehicle_type,f.name AS fleet_name,f.status AS fleet_status,g.group_id IS NOT NULL AS group_bound
     FROM shopee_assignments a JOIN shopee_routes r ON r.id=a.route_id JOIN partner_fleets f ON f.id=a.fleet_id LEFT JOIN line_fleet_groups g ON g.fleet_id=f.id WHERE r.service_date=$1
   ), latest AS (SELECT DISTINCT ON(fleet_id) * FROM shopee_fleet_reports WHERE service_date=$1 ORDER BY fleet_id,id DESC),
-  fleets AS (SELECT a.fleet_id,a.fleet_name,SUM(a.requested_trucks)::int AS requested,SUM(a.confirmed_trucks)::int AS confirmed,
-    SUM(a.requested_trucks) FILTER(WHERE a.status='待回覆') AS pending,COALESCE(l.reported_total,0)::int AS reported,l.source,l.created_at AS reported_at,l.reported_by
-    FROM assignments a LEFT JOIN latest l ON l.fleet_id=a.fleet_id GROUP BY a.fleet_id,a.fleet_name,l.reported_total,l.source,l.created_at,l.reported_by)
+  per_car AS (SELECT t.fleet_id,count(*)::int AS reported,MAX(c.created_at) AS reported_at FROM delivery_checkins c JOIN delivery_trips t ON t.id=c.trip_id WHERE t.service_date=$1 AND t.demand_route_id IS NOT NULL AND t.status<>'已取消' GROUP BY t.fleet_id),
+  fleets AS (SELECT a.fleet_id,a.fleet_name,SUM(CASE WHEN NOT a.delivery_managed OR a.status<>'已拒絕' THEN a.requested_trucks ELSE 0 END)::int AS requested,SUM(a.confirmed_trucks)::int AS confirmed,
+    SUM(a.requested_trucks) FILTER(WHERE a.status='待回覆') AS pending,CASE WHEN BOOL_AND(a.delivery_managed) THEN COALESCE(p.reported,0) ELSE COALESCE(l.reported_total,0) END::int AS reported,BOOL_AND(a.delivery_managed) AS individual_mode,CASE WHEN BOOL_AND(a.delivery_managed) THEN '逐車LINE報到' ELSE l.source END AS source,CASE WHEN BOOL_AND(a.delivery_managed) THEN p.reported_at ELSE l.created_at END AS reported_at,l.reported_by
+    FROM assignments a LEFT JOIN latest l ON l.fleet_id=a.fleet_id LEFT JOIN per_car p ON p.fleet_id=a.fleet_id GROUP BY a.fleet_id,a.fleet_name,l.reported_total,l.source,l.created_at,l.reported_by,p.reported,p.reported_at)
   SELECT (SELECT COALESCE(json_agg(a ORDER BY fleet_name,id),'[]'::json) FROM assignments a) AS items,
     (SELECT COALESCE(json_agg(f ORDER BY fleet_name),'[]'::json) FROM fleets f) AS fleets,
     (SELECT COALESCE(SUM(required_trucks),0)::int FROM shopee_routes WHERE service_date=$1) AS required,
     (SELECT count(*)::int FROM delivery_trips WHERE service_date=$1 AND demand_route_id IS NOT NULL AND driver_id IS NOT NULL AND fleet_id IS NULL AND status<>'已取消') AS own`,[day])).rows[0];
-  res.set('Cache-Control','no-store').json({...data,date:day,items:data.items.map(a=>({...a,number:number(a.id)})),updatedAt:new Date().toISOString()});
+  res.set('Cache-Control','no-store').json({...data,date:day,individualMode:data.items.length>0&&data.items.every(a=>a.delivery_managed),items:data.items.map(a=>({...a,number:number(a.id)})),updatedAt:new Date().toISOString()});
 }catch(e){next(e);}});
 router.get('/fleets/:id/reports',async(req,res,next)=>{try{
   const day=req.query.date||todayInTaipei();if(!validDay(day))return res.status(400).json({error:'日期無效'});
