@@ -524,7 +524,8 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
         <button class="tab active" data-sub="subUsers">使用者</button>
         <button class="tab" data-sub="subSettings">網站內容設定</button>
         <button class="tab" data-sub="subAudit">操作紀錄</button>
-        <button class="tab" data-sub="subBulk">訂單批次匯入匯出</button>
+        <button class="tab" data-sub="subBulk">蝦皮店到店批次匯入</button>
+        <button class="tab" data-sub="subDeliveryExport">蝦皮店到店匯出下載</button>
       </div>
 
       <div id="subUsers" class="panel subpanel active">
@@ -558,16 +559,16 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
       </div>
 
       <div id="subBulk" class="panel subpanel">
-        <h3>匯出</h3>
-        <button class="action secondary" onclick="exportCSV()">匯出全部訂單 CSV</button>
-        <h3 style="margin-top:24px">批次匯入訂單</h3>
-        <p class="hint">CSV 欄位:船掛(可選)、船商、調派類型(CY 或 船邊)、船名航次(沒填時要有船掛)、貨櫃編號、起點、終點、作業時間(例如 2026-10-01 09:00)、尺寸。船商可自由填寫,尺寸必須是後台設定清單內的值。匯入的訂單一律是「待派車」。只要有一列錯誤,整批都不會寫入。</p>
-        <div class="toolbar">
-          <button class="action secondary" onclick="downloadTemplate()">下載範本</button>
-          <input id="importFile" type="file" accept=".csv,text/csv">
-          <button class="action" onclick="importOrders()">開始匯入</button>
-        </div>
-        <div id="importResult"></div>
+        <h3>蝦皮店到店｜訂單批次匯入</h3>
+        <p class="hint">CSV欄位：訂單編號、取貨倉、門店代碼、作業日期、件數、備註。取貨倉僅大園、楊梅、觀音；門店須先登錄並核對。每批最多500筆，任一筆失敗整批不寫入，重複訂單不覆蓋。</p>
+        <div class="toolbar"><button id="adminDeliveryTemplate" class="action secondary">下載蝦皮訂單範本</button><button id="adminDeliveryImport" class="action">選擇CSV並匯入</button></div>
+        <p class="hint">作業日期以CSV各列為準。完成後可到「蝦皮店到店」選擇對應日期查看。</p><p id="adminDeliveryImportResult" role="status"></p>
+      </div>
+      <div id="subDeliveryExport" class="panel subpanel">
+        <h3>蝦皮店到店｜訂單匯出下載</h3>
+        <form id="adminDeliveryExportForm"><div class="control-toolbar"><label>下載起日 <input id="adminDeliveryExportFrom" type="date" required></label><label>下載迄日 <input id="adminDeliveryExportTo" type="date" required></label><button class="action" id="adminDeliveryExport">下載訂單CSV</button></div></form>
+        <p class="hint">同一天請選相同日期；最多31天、10000筆。包含門店、取貨倉、件數、狀態、車趟、車隊、自有司機與車牌資訊。沒有資料仍下載欄位範本。</p>
+        <p id="adminDeliveryExportResult" role="status" class="hint"></p>
       </div>
     </section>
   </main>
@@ -2853,6 +2854,8 @@ loadPublicSettings();
 })();
 </script>
 
-<script src="/shopeeWorkspace.js?v=unified-1"></script>
+<script src="/serviceDay.js?v=1"></script>
+<script src="/shopeeWorkspace.js?v=day-follow-2"></script>
+<script src="/adminDelivery.js?v=1"></script>
 </body>
 </html>
