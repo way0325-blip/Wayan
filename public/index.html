@@ -560,14 +560,14 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
 
       <div id="subBulk" class="panel subpanel">
         <h3>蝦皮店到店｜訂單批次匯入</h3>
-        <p class="hint">CSV欄位：訂單編號、取貨倉、門店代碼、作業日期、件數、備註。取貨倉僅大園、楊梅、觀音；門店須先登錄並核對。每批最多500筆，任一筆失敗整批不寫入，重複訂單不覆蓋。</p>
+        <p class="hint">CSV欄位：訂單編號、取貨倉、門店代碼、作業日期、件數、備註、路線代碼、取貨點。取貨區域保留大園、楊梅、觀音；N／F橘箱選大園長榮／水源／大園倉，W黑箱選楊梅仁美／威獅倉。門店須先登錄並核對。每批最多500筆，任一筆失敗整批不寫入，重複訂單不覆蓋。</p>
         <div class="toolbar"><button id="adminDeliveryTemplate" class="action secondary">下載蝦皮訂單範本</button><button id="adminDeliveryImport" class="action">選擇CSV並匯入</button></div>
         <p class="hint">作業日期以CSV各列為準。完成後可到「蝦皮店到店」選擇對應日期查看。</p><p id="adminDeliveryImportResult" role="status"></p>
       </div>
       <div id="subDeliveryExport" class="panel subpanel">
         <h3>蝦皮店到店｜訂單匯出下載</h3>
         <form id="adminDeliveryExportForm"><div class="control-toolbar"><label>下載起日 <input id="adminDeliveryExportFrom" type="date" required></label><label>下載迄日 <input id="adminDeliveryExportTo" type="date" required></label><button class="action" id="adminDeliveryExport">下載訂單CSV</button></div></form>
-        <p class="hint">同一天請選相同日期；最多31天、10000筆。包含門店、取貨倉、件數、狀態、車趟、車隊、自有司機與車牌資訊。沒有資料仍下載欄位範本。</p>
+        <p class="hint">同一天請選相同日期；最多31天、10000筆。包含路線代碼、取貨點、箱型、配送類型、門店、取貨倉、件數、狀態、車趟、車隊、自有司機與車牌資訊。沒有資料仍下載欄位範本。</p>
         <p id="adminDeliveryExportResult" role="status" class="hint"></p>
       </div>
     </section>
@@ -878,7 +878,8 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
 <div id="opsDetailModal" class="modal hidden"><div class="modal-box" style="max-width:1000px"><div class="modal-head"><h3 id="opsDetailTitle"></h3><button class="close" onclick="closeModal('opsDetailModal')">×</button></div>
 <p id="opsCommand" style="white-space:pre-wrap"></p><form id="opsCheckinForm"><p id="opsFormError" class="opsFormError control-error" role="alert"></p><div class="form-grid"><div class="field"><label>目前累計報到總車數</label><input id="opsTotal" type="number" min="0" max="200000" step="1" required></div><div class="field"><label>補登／更正原因（必填）</label><input id="opsReportNote" maxlength="500" required></div></div><button class="primary" id="opsCheckinSave">登記累計總數</button></form><div id="opsCheckinRows" class="table-wrap"></div></div></div>
 
-<script src="/storeDelivery.js?v=aliases-1"></script><script src="/deliveryDispatch.js?v=aliases-1"></script><script src="/fleets.js?v=fleet-line-workspace-1"></script><script src="/lineKeywords.js"></script><script src="/lineActivity.js?v=chat-1"></script>
+<script src="/deliveryRouting.js?v=1"></script>
+<script src="/storeDelivery.js?v=pickup-2"></script><script src="/deliveryDispatch.js?v=pickup-2"></script><script src="/fleets.js?v=fleet-line-workspace-1"></script><script src="/lineKeywords.js"></script><script src="/lineActivity.js?v=chat-1"></script>
 <script src="/operations.js"></script><script src="/penalties.js"></script>
 <script>
 const todayEl = document.getElementById("today");
@@ -2856,6 +2857,6 @@ loadPublicSettings();
 
 <script src="/serviceDay.js?v=1"></script>
 <script src="/shopeeWorkspace.js?v=day-follow-2"></script>
-<script src="/adminDelivery.js?v=1"></script>
+<script src="/adminDelivery.js?v=pickup-2"></script>
 </body>
 </html>

@@ -145,3 +145,20 @@ test('Shopee export filters historical dates, includes trip data and audits down
  assert.ok((await pool.query("SELECT 1 FROM audit_logs WHERE action='匯出訂單' AND entity='蝦皮門店訂單'")).rowCount);
 });
 test('CSV exports neutralize formulas, tabs, newlines and escape quotes',()=>{const {cell}=require('../deliveryExport');for(const value of ['=1',' +SUM(1)','-1','@test','\tdata','\n=1'])assert.ok(cell(value).startsWith('"\''));assert.equal(cell('a"b'),'"a""b"');});
+
+test('five pickup points preserve legacy warehouses and classify all supplied route codes',async()=>{
+ const config=(await api('GET','/api/store-delivery/config')).data;assert.equal(config.warehouses.length,3);assert.equal(config.pickupPoints.length,5);assert.equal(config.routeExamples.length,13);assert.ok(config.pickupPoints.every(p=>p.address===''));
+ const {classify}=require('../../public/deliveryRouting');for(const code of config.routeExamples){const r=classify(code);assert.equal(r.code,code);assert.equal(r.boxType,code[0]==='W'?'黑箱':'橘箱');assert.ok(config.pickupPoints.some(p=>p.box_type===r.boxType));}assert.equal(classify('NB-03-484-1橘箱').serviceType,'店配');assert.equal(classify('FN-01-292-1').serviceType,'隔日到貨');assert.equal(classify('WB-01-202-1黑箱').serviceType,'黑箱隔日到貨');assert.equal(classify('NB-03-484-1黑箱'),null);assert.equal(classify('X-1'),null);
+});
+test('route imports enforce box, area and pickup point and roll back mixed invalid batches',async()=>{
+ const baseRow={reference:'PICKUP-ROLLBACK',warehouseId:'DAYUAN',storeCode:'A',serviceDate:day,quantity:1,routeCode:'NB-03-484-1',pickupPointId:'CHANGRONG'};
+ for(const changed of [{pickupPointId:''},{pickupPointId:'RENMEI'},{routeCode:'WB-01-202-1'},{warehouseId:'YANGMEI'},{routeCode:'X-1'}])assert.equal((await api('POST','/api/store-delivery/orders/import',{rows:[{...baseRow,...changed}]})).status,400);
+ assert.equal((await api('POST','/api/store-delivery/orders/import',{rows:[baseRow,{...baseRow,reference:'PICKUP-BAD',pickupPointId:'RENMEI'}]})).status,400);assert.equal((await pool.query("SELECT 1 FROM delivery_orders WHERE reference='PICKUP-ROLLBACK'")).rowCount,0);
+ for(const [reference,pickupPointId,routeCode] of [['PICKUP-A','CHANGRONG','NB-03-484-1'],['PICKUP-B','SHUIYUAN','FN-01-292-1'],['PICKUP-C','CHANGRONG','FM-01-281-1']])assert.equal((await order('A',{reference,pickupPointId,routeCode})).status,201);
+ assert.equal((await order('A',{reference:'PICKUP-W',warehouseId:'YANGMEI',pickupPointId:'RENMEI',routeCode:'WB-01-202-1黑箱'})).status,201);
+});
+test('trips reject mixed pickup points and snapshot same-point routes into LINE and exports',async()=>{
+ const rows=(await api('GET','/api/store-delivery/orders?date='+day)).data;const find=ref=>rows.find(o=>o.reference===ref);const body={requestId:crypto.randomUUID(),orderIds:[find('PICKUP-A').id,find('PICKUP-B').id],departureTime:'09:00'};assert.equal((await api('POST','/api/store-delivery/trips',body)).status,409);
+ const r=await api('POST','/api/store-delivery/trips',{...body,requestId:crypto.randomUUID(),orderIds:[find('PICKUP-A').id,find('PICKUP-C').id]});assert.equal(r.status,201);assert.equal(r.data.pickup_point_name,'長榮倉');assert.equal(r.data.box_type,'橘箱');assert.equal(r.data.warehouse_address,'');const text=(await api('GET','/api/store-delivery/trips/'+r.data.id+'/line-text')).data.text;assert.match(text,/長榮倉（橘箱）/);assert.match(text,/NB-03-484-1/);assert.match(text,/FM-01-281-1/);
+ const csv=await fetch(base+'/api/store-delivery/orders/export/csv?from='+day+'&to='+day,{headers:{Authorization:'Bearer '+token}});const contents=await csv.text();assert.match(contents,/取貨點/);assert.match(contents,/長榮倉/);assert.match(contents,/黑箱隔日到貨/);assert.match(contents,/WB-01-202-1/);
+});
