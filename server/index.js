@@ -66,6 +66,7 @@ app.use(
 );
 
 app.use('/api/store-delivery',express.json({limit:'2mb'}));
+app.use('/api/source-catalog',express.json({limit:'3mb'}));
 app.use(express.json({ limit: "100kb" }));
 
 // 全站 API 速率限制,避免暴力嘗試或濫用
@@ -114,6 +115,7 @@ app.use('/api/penalty-rules',require('./routes/penaltyRules'));
 app.use('/api/penalty-cases',require('./routes/penaltyCases'));
 app.use('/api/store-delivery',require('./routes/storeDelivery'));
 app.use('/api/shopee-live',require('./routes/shopeeLive'));
+app.use('/api/source-catalog',require('./routes/sourceCatalog'));
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 app.use('/api', (req,res)=>res.status(404).json({error:'找不到 API'}));
@@ -146,6 +148,9 @@ async function start() {
   require('./fleetJobs').startFleetWorker();
   app.listen(PORT, () => {
     console.log(`港區星際運輸調度中心伺服器已啟動: http://localhost:${PORT}`);
+    require('./sourceCatalogBootstrap').bootstrapSourceCatalog(require('./db').pool)
+      .then(result=>{if(result.length)console.log('SOURCE_CATALOG_INITIAL_IMPORT',JSON.stringify(result));})
+      .catch(()=>console.error('SOURCE_CATALOG_INITIAL_IMPORT_FAILED'));
   });
 }
 
