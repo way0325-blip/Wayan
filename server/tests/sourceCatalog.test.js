@@ -59,9 +59,19 @@ test('sequence history and stop changes both roll back on audit failure',async()
  try{const r=await fetch(base+'/api/store-delivery/trips/'+id+'/sequence',{method:'PUT',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({orderIds:original.slice().reverse(),expectedOrderIds:original})});assert.equal(r.status,500);assert.deepEqual((await pool.query('SELECT order_id FROM delivery_trip_stops WHERE trip_id=$1 ORDER BY stop_no',[id])).rows.map(s=>s.order_id),original);assert.equal((await pool.query('SELECT count(*)::int n FROM delivery_trip_sequence_history WHERE trip_id=$1',[id])).rows[0].n,before);}finally{await pool.query('DROP TRIGGER fail_sequence ON audit_logs; DROP FUNCTION fail_sequence_audit()');}
 });
 test('route LIST returns all choices beyond the paginated detail table',async()=>{
- const rows=Array.from({length:60},(_,i)=>row(i+2,{1:'NB-LIST-'+String(i+1).padStart(2,'0'),2:'6.2T',6:'1',7:'測試門店'+i,8:'桃園市大園區測試路'+i+'號'}));
+ const rows=Array.from({length:60},(_,i)=>row(i+2,{1:'NB-LIST-'+String(i+1).padStart(2,'0'),2:'6.2T',4:i<20?'01:30-02:10':i<40?'20:00':'待排',6:'1',7:'測試門店'+i,8:'桃園市大園區測試路'+i+'號'}));
  assert.equal((await save('NB',rows)).status,201);assert.equal((await api('GET','/NB')).data.records.length,50);
  const options=await api('GET','/NB/options');assert.equal(options.status,200);assert.equal(options.data.routes.length,60);assert.equal(options.data.routes[59].routeCode,'NB-LIST-60');
  assert.equal((await api('GET','/NB/options',undefined,null)).status,401);
+});
+test('E-column filtering runs before pagination and keeps total catalog counts and region details',async()=>{
+ const options=(await api('GET','/NB/options')).data;assert.equal(options.timeGroups.length,3);assert.equal(options.routes[0].areas.districts[0],'桃園市大園區');
+ const filtered=await api('GET','/NB?window=20%3A00');assert.equal(filtered.data.total,20);assert.equal(filtered.data.catalogTotal,60);assert.ok(filtered.data.records.every(r=>r.timeWindow==='20:00'));
+ assert.equal((await api('GET','/NB?window=pending')).data.total,20);assert.equal((await api('GET','/drivers?window=20%3A00')).status,400);
+});
+test('I-column warehouse filters preserve source codes, total rows and group counts',async()=>{
+ const rows=['N-SOC','C-SOC','S-SOC','南北轉運'].map((warehouse,i)=>row(i+3,{2:'測試司機'+i,6:'2099/12/31',8:warehouse,10:'WAREHOUSE-'+i}));assert.equal((await save('drivers',rows)).status,201);
+ const north=(await api('GET','/drivers?warehouse=N-SOC')).data;assert.equal(north.total,1);assert.equal(north.catalogTotal,4);assert.equal(north.records[0].warehouse,'N-SOC');assert.deepEqual(north.warehouseGroups.map(g=>g.count),[1,1,1,1]);
+ const other=(await api('GET','/drivers?warehouse=other')).data;assert.equal(other.records[0].warehouse,'南北轉運');assert.equal((await api('GET','/NB?warehouse=N-SOC')).status,400);assert.equal((await api('GET','/drivers?warehouse=INVALID')).status,400);
 });
 test('audit failure rolls back entire source import',async()=>{await pool.query("CREATE FUNCTION fail_source_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.entity='來源資料' THEN RAISE EXCEPTION 'TEST'; END IF; RETURN NEW; END $$; CREATE TRIGGER fail_source BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION fail_source_audit()");try{const before=(await pool.query('SELECT count(*)::int n FROM source_catalog_batches')).rows[0].n;const r=await save('vehicles',[row(2,{0:'ABC-9999',1:'6.2T'})]);assert.equal(r.status,500);assert.equal((await pool.query('SELECT count(*)::int n FROM source_catalog_batches')).rows[0].n,before);}finally{await pool.query('DROP TRIGGER fail_source ON audit_logs; DROP FUNCTION fail_source_audit()');}});

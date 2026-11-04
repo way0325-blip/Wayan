@@ -2,6 +2,8 @@ const express=require('express'),crypto=require('node:crypto');
 const {pool:rawPool}=require('../db'),{requireAuth,requireRole}=require('../auth');
 const {transactionalRouter}=require('../transactionalRouter'),{isValidDateKey}=require('../dates');
 const {SOURCE_ID,SPECS,parse,readSource,hash}=require('../sourceCatalog');
+const grouping=require('../../public/routeCatalogGroups');
+const warehouses=require('../../public/warehouseGroups');
 const router=express.Router();
 router.use(requireAuth,requireRole('admin','dispatcher'),(req,res,next)=>{res.set('Cache-Control','no-store');next();});
 const latest=async(db,kind)=>(await db.query('SELECT * FROM source_catalog_batches WHERE source_id=$1 AND kind=$2 ORDER BY id DESC LIMIT 1',[SOURCE_ID,kind])).rows[0];
@@ -10,16 +12,18 @@ router.get('/config',(req,res)=>res.json({sourceId:SOURCE_ID,specs:SPECS,service
 router.get('/:kind/options',async(req,res,next)=>{try{
  if(!['NB','FN','WB'].includes(req.params.kind))return res.status(400).json({error:'請選擇N、F或W路線清單'});
  const batch=await latest(rawPool,req.params.kind);
- const routes=(batch?.records||[]).map(r=>({routeCode:r.routeCode,vehicleType:r.vehicleType,boxType:r.boxType,stopCount:r.stops.length,firstStop:r.stops[0]?.name||'',lastStop:r.stops.at(-1)?.name||'',blocked:r.problems.length>0})).sort((a,b)=>a.routeCode.localeCompare(b.routeCode,'en',{numeric:true}));
- res.json({batchId:batch?.id||null,routes});
+ const routes=(batch?.records||[]).map(r=>({routeCode:r.routeCode,vehicleType:r.vehicleType,boxType:r.boxType,timeWindow:r.timeWindow,window:grouping.timeWindow(r.timeWindow),areas:grouping.areas(r),stopCount:r.stops.length,firstStop:r.stops[0]?.name||'',lastStop:r.stops.at(-1)?.name||'',blocked:r.problems.length>0})).sort((a,b)=>a.routeCode.localeCompare(b.routeCode,'en',{numeric:true}));
+ res.json({batchId:batch?.id||null,routes,timeGroups:grouping.groups(batch?.records||[])});
  }catch(e){next(e);}});
 router.get('/:kind',async(req,res,next)=>{try{
  if(!SPECS[req.params.kind])return res.status(400).json({error:'來源種類無效'});
+ const window=String(req.query.window||'');if(window&&(!['NB','FN','WB'].includes(req.params.kind)||window.length>30||window!=='pending'&&grouping.timeWindow(window).key!==window))return res.status(400).json({error:'出車時段篩選無效'});
+ const warehouse=String(req.query.warehouse||'');if(warehouse&&(req.params.kind!=='drivers'||!['N-SOC','C-SOC','S-SOC','other'].includes(warehouse)))return res.status(400).json({error:'司機倉別篩選無效'});
  const batch=await latest(rawPool,req.params.kind);if(!batch)return res.json({batchId:null,total:0,records:[],issues:[]});
  const q=String(req.query.q||'').trim().slice(0,100),page=Number(req.query.page||1);
  if(!Number.isInteger(page)||page<1||page>10000)return res.status(400).json({error:'頁碼無效'});
- const records=batch.records.filter(r=>!q||JSON.stringify(r).toLowerCase().includes(q.toLowerCase()));
- res.json({batchId:batch.id,total:records.length,page,records:records.slice((page-1)*50,page*50),issues:batch.issues,updatedAt:batch.created_at,blocked:batch.records.filter(r=>r.problems.length).length});
+ const records=batch.records.filter(r=>(!q||JSON.stringify(r).toLowerCase().includes(q.toLowerCase()))&&grouping.matches(r,window)&&warehouses.matches(r,warehouse));
+ res.json({batchId:batch.id,total:records.length,catalogTotal:batch.records.length,warehouseGroups:req.params.kind==='drivers'?warehouses.groups(batch.records):undefined,page,records:records.slice((page-1)*50,page*50),issues:batch.issues,updatedAt:batch.created_at,blocked:batch.records.filter(r=>r.problems.length).length});
  }catch(e){next(e);}});
 // Network reads finish before opening a database transaction.
 router.post('/:kind/pull',requireRole('admin'),async(req,res)=>{try{const rows=await readSource(req.params.kind),preview=parse(req.params.kind,rows),current=await latest(rawPool,req.params.kind);res.json({rows,preview,changes:changes(current,preview),expectedBatchId:current?.id||null});}catch(e){res.status(422).json({error:e.message});}});
