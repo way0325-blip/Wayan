@@ -45,7 +45,20 @@ router.post('/trips',async(req,res,next)=>{try{
   for(let i=0;i<ids.length;i++){const o=rows.find(o=>String(o.id)===String(ids[i]));await pool.query('INSERT INTO delivery_trip_stops(trip_id,order_id,stop_no,store_code,store_name,city,district,address,route_code) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[t.id,o.id,i+1,o.store_code,o.store_name,o.city,o.district,o.address,o.route_code]);}
   await pool.query("UPDATE delivery_orders SET status='已安排' WHERE id=ANY($1::bigint[])",[ids]);await logAction(req,'合併車趟','蝦皮門店車趟',t.id,`${ids.length}筆訂單／${new Set(rows.map(o=>o.city+o.district)).size}區`);res.status(201).json(t);
 }catch(e){next(e);}});
-router.put('/trips/:id/sequence',async(req,res,next)=>{try{const t=await getTrip(req.params.id),ids=req.body?.orderIds;if(!t||t.status!=='待派車')return res.status(409).json({error:'只有待派車車趟可調整順序'});const stops=(await pool.query('SELECT order_id FROM delivery_trip_stops WHERE trip_id=$1',[t.id])).rows.map(r=>String(r.order_id));if(!Array.isArray(ids)||ids.length!==stops.length||new Set(ids.map(String)).size!==ids.length||ids.some(v=>!stops.includes(String(v))))return res.status(400).json({error:'須提供完整且不重複的原車趟訂單順序'});await pool.query('SET CONSTRAINTS delivery_trip_stops_trip_id_stop_no_key DEFERRED');for(let i=0;i<ids.length;i++)await pool.query('UPDATE delivery_trip_stops SET stop_no=$3 WHERE trip_id=$1 AND order_id=$2',[t.id,ids[i],i+1]);await pool.query('UPDATE delivery_trips SET updated_at=clock_timestamp() WHERE id=$1',[t.id]);await logAction(req,'調整停靠順序','蝦皮門店車趟',t.id,ids.join(','));res.json({ok:true});}catch(e){next(e);}});
+router.put('/trips/:id/sequence',async(req,res,next)=>{try{
+ const t=await getTrip(req.params.id),ids=req.body?.orderIds;
+ if(!t||t.status!=='待派車')return res.status(409).json({error:'只有待派車車趟可調整順序'});
+ const stops=(await pool.query('SELECT order_id FROM delivery_trip_stops WHERE trip_id=$1 ORDER BY stop_no',[t.id])).rows.map(r=>String(r.order_id));
+ if(!Array.isArray(ids)||ids.length!==stops.length||new Set(ids.map(String)).size!==ids.length||ids.some(v=>!stops.includes(String(v))))return res.status(400).json({error:'須提供完整且不重複的原車趟訂單順序'});
+ const expected=req.body.expectedOrderIds;
+ if(expected!==undefined&&(!Array.isArray(expected)||JSON.stringify(expected.map(String))!==JSON.stringify(stops)))return res.status(409).json({error:'停靠順序已被其他人調整，請重新開啟車趟後再修改'});
+ await pool.query('SET CONSTRAINTS delivery_trip_stops_trip_id_stop_no_key DEFERRED');
+ for(let i=0;i<ids.length;i++)await pool.query('UPDATE delivery_trip_stops SET stop_no=$3 WHERE trip_id=$1 AND order_id=$2',[t.id,ids[i],i+1]);
+ await pool.query('INSERT INTO delivery_trip_sequence_history(trip_id,before_order_ids,after_order_ids,actor) VALUES($1,$2,$3,$4)',[t.id,JSON.stringify(stops),JSON.stringify(ids.map(String)),req.user.username]);
+ await pool.query('UPDATE delivery_trips SET updated_at=clock_timestamp() WHERE id=$1',[t.id]);
+ await logAction(req,'調整停靠順序','蝦皮門店車趟',t.id,ids.join(','));res.json({ok:true});
+ }catch(e){next(e);}});
+router.get('/trips/:id/sequence-history',async(req,res,next)=>{try{if(!id(req.params.id))return res.status(400).json({error:'車趟編號無效'});res.json((await pool.query('SELECT id,before_order_ids,after_order_ids,actor,created_at FROM delivery_trip_sequence_history WHERE trip_id=$1 ORDER BY id DESC LIMIT 100',[req.params.id])).rows);}catch(e){next(e);}});
 router.post('/trips/:id/dispatch',async(req,res,next)=>{try{
   await pool.query('SELECT pg_advisory_xact_lock(870032)');const t=await getTrip(req.params.id);if(!t||t.status!=='待派車')return res.status(409).json({error:'只有待派車車趟可派車'});
   if(t.demand_route_id&&t.fleet_id)return res.status(409).json({error:'已指定夥伴車隊；改用自有車請使用人工分派調整，以同步路線數量'});
