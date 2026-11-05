@@ -75,3 +75,45 @@ test('I-column warehouse filters preserve source codes, total rows and group cou
  const other=(await api('GET','/drivers?warehouse=other')).data;assert.equal(other.records[0].warehouse,'南北轉運');assert.equal((await api('GET','/NB?warehouse=N-SOC')).status,400);assert.equal((await api('GET','/drivers?warehouse=INVALID')).status,400);
 });
 test('audit failure rolls back entire source import',async()=>{await pool.query("CREATE FUNCTION fail_source_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.entity='來源資料' THEN RAISE EXCEPTION 'TEST'; END IF; RETURN NEW; END $$; CREATE TRIGGER fail_source BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION fail_source_audit()");try{const before=(await pool.query('SELECT count(*)::int n FROM source_catalog_batches')).rows[0].n;const r=await save('vehicles',[row(2,{0:'ABC-9999',1:'6.2T'})]);assert.equal(r.status,500);assert.equal((await pool.query('SELECT count(*)::int n FROM source_catalog_batches')).rows[0].n,before);}finally{await pool.query('DROP TRIGGER fail_source ON audit_logs; DROP FUNCTION fail_source_audit()');}});
+
+test('daily import previews known routes, preserves flexibility and deduplicates replays',async()=>{
+ const r={serviceDate:'2098-11-05',routeCode:'NB-LIST-01',pickupPointId:'DAYUAN_SITE',departureTime:'03:00',quantity:2};
+ const p=await api('POST','/daily/preview',{rows:[r]});assert.equal(p.status,200);assert.equal(p.data.items[0].stopCount,1);
+ assert.equal((await api('POST','/daily/commit',{rows:[r],digest:p.data.digest})).status,400);
+ const c=await api('POST','/daily/commit',{rows:[r],digest:p.data.digest,verified:true});assert.equal(c.status,200);assert.equal(c.data.created,1);
+ const trip=(await pool.query('SELECT * FROM delivery_trips WHERE id=$1',[c.data.results[0].tripId])).rows[0];assert.equal(trip.driver_id,null);assert.equal(trip.fleet_id,null);
+ const replay=await api('POST','/daily/commit',{rows:[r],digest:p.data.digest,verified:true});assert.equal(replay.data.duplicate,1);
+ assert.equal((await api('POST','/daily/preview',{rows:[r,r]})).status,400);
+ assert.equal((await api('POST','/daily/preview',{rows:[{...r,pickupPointId:'RENMEI'}]})).status,400);
+ assert.equal((await api('POST','/daily/commit',{rows:[r],digest:'stale',verified:true})).status,409);
+ assert.equal((await api('GET','/NB')).data.records.some(r=>'sourceDriverId' in r),false);
+ assert.equal((await api('GET','/NB?vehicleType=NONEXISTENT')).data.total,0);
+});
+test('daily import rolls back earlier rows when a later task conflicts',async()=>{
+ const rows=[{serviceDate:'2098-11-06',routeCode:'NB-LIST-02',pickupPointId:'DAYUAN_SITE',departureTime:'03:00',quantity:1},{serviceDate:'2098-11-05',routeCode:'NB-LIST-01',pickupPointId:'DAYUAN_SITE',departureTime:'04:00',quantity:1}];
+ const p=(await api('POST','/daily/preview',{rows})).data;assert.equal((await api('POST','/daily/commit',{rows,digest:p.digest,verified:true})).status,409);
+ assert.equal((await pool.query("SELECT count(*)::int n FROM delivery_trips WHERE task_code='20981106-NB-LIST-02'")).rows[0].n,0);
+});
+test('daily files parse quoted CSV and TSV, reject malformed input',()=>{const f=require('../../public/dailyTaskFormat');assert.equal(f.parse('serviceDate,routeCode,pickupPointId,departureTime,quantity\n2098-11-05,"NB-LIST-01",DAYUAN_SITE,03:00,1')[0].routeCode,'NB-LIST-01');assert.equal(f.parse('serviceDate\trouteCode\tpickupPointId\tdepartureTime\tquantity\n2098-11-05\tNB-LIST-01\tDAYUAN_SITE\t03:00\t1').length,1);assert.throws(()=>f.parse('bad,header'));assert.throws(()=>f.parse('serviceDate,routeCode,pickupPointId,departureTime,quantity\n"unclosed'));});
+test('daily sheet reader refuses arbitrary URLs before any network access',async()=>{const read=require('../dailyTaskSheet').read;for(const url of ['http://127.0.0.1/','https://evil.example/spreadsheets/d/abcdefghijklmnopqrst/edit#gid=1','https://docs.google.com/spreadsheets/d/abcdefghijklmnopqrst/edit'])await assert.rejects(()=>read(url,{},()=>{throw Error('must not fetch');}));});
+
+test('explicit staging acceptance queues exactly one marked test without changing source routes',async()=>{
+ const setup=require('../stagingRouteAcceptance'),date=require('../dates').todayInTaipei(),id='acceptance-fleet',group='C'+'f'.repeat(32),env={...process.env,STAGING_ROUTE_ACCEPTANCE_REQUEST_ID:'87654321-1234-1234-1234-123456789abc',STAGING_ROUTE_ACCEPTANCE_DATE:date,STAGING_ROUTE_ACCEPTANCE_FLEET_ID:id,STAGING_ROUTE_ACCEPTANCE_FLEET_NAME:'安樺驗收車隊'};
+ assert.deepEqual(await setup.setup(pool,{}),{status:'disabled'});await assert.rejects(()=>setup.setup(pool,{...env,WAYAN_ENV:'production'}));
+ await pool.query("INSERT INTO partner_fleets(id,name) VALUES($1,$2)",[id,'安樺驗收車隊']);await pool.query("INSERT INTO line_group_registry(group_id,label,bot_present,created_by) VALUES($1,'驗收群',TRUE,'test')",[group]);await pool.query("INSERT INTO line_fleet_groups(group_id,fleet_id,bound_by) VALUES($1,$2,'test')",[group,id]);
+ const count=(await pool.query('SELECT count(*)::int n FROM source_catalog_trip_links')).rows[0].n,result=await setup.setup(pool,env);assert.equal(result.status,'created');assert.equal((await setup.setup(pool,env)).status,'existing');
+ assert.equal((await pool.query('SELECT count(*)::int n FROM source_catalog_trip_links')).rows[0].n,count);
+ const t=(await pool.query('SELECT * FROM delivery_trips WHERE id=$1',[result.tripId])).rows[0];assert.equal(t.is_simulated,true);assert.match(t.task_code,/-TEST-/);assert.equal(await setup.allowed(pool,t),true);assert.equal(await setup.allowed(pool,{...t,fleet_id:'OTHER'}),false);
+ assert.equal((await pool.query("SELECT count(*)::int n FROM fleet_delivery_jobs WHERE payload->>'tripId'=$1",[result.tripId])).rows[0].n,1);
+ const a=require('../deliveryAliases');assert.equal(String((await a.resolve(pool,result.taskCode,id)).id),result.tripId);
+ assert.match(await require('../deliveryCheckins').handle(pool,'車趟異常 '+result.taskCode+' 延誤 測試',{id},'test-user','test-incident'),/已阻擋/);
+ await pool.query('UPDATE settings SET value=$2 WHERE key=$1',['route-acceptance:'+t.id,JSON.stringify({fleetId:id,date,expiresAt:0})]);assert.equal(await setup.allowed(pool,t),false);assert.equal((await require('../deliveryLine').queue(pool,t,{username:'test',role:'admin'})).status,409);
+});
+
+test('selected-task LINE batch notification is atomic and requires current versions',async()=>{
+ const t=(await pool.query("SELECT * FROM delivery_trips WHERE task_code='20981105-NB-LIST-01'")).rows[0];await pool.query('UPDATE delivery_trips SET fleet_id=$2 WHERE id=$1',[t.id,'acceptance-fleet']);
+ const version=(await pool.query(`SELECT to_char(updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') v FROM delivery_trips WHERE id=$1`,[t.id])).rows[0].v;
+ const send=async items=>{const r=await fetch(base+'/api/store-delivery/trips/batch-notify',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({items})});return {status:r.status,data:await r.json()};};
+ assert.equal((await send([{tripId:t.id,version},{tripId:'99999999',version}])).status,404);assert.equal((await pool.query("SELECT count(*)::int n FROM fleet_delivery_jobs WHERE payload->>'tripId'=$1",[String(t.id)])).rows[0].n,0);
+ assert.equal((await send([{tripId:t.id,version:'stale'}])).status,409);assert.equal((await send([{tripId:t.id,version}])).data.queued,1);assert.equal((await send([{tripId:t.id,version}])).data.duplicate,1);
+});

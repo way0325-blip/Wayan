@@ -1,6 +1,6 @@
-const express=require('express'),crypto=require('node:crypto');
+const express=require('express');
 const {pool:rawPool}=require('../db'),{requireAuth,requireRole}=require('../auth');
-const {transactionalRouter}=require('../transactionalRouter'),{isValidDateKey}=require('../dates');
+const {transactionalRouter}=require('../transactionalRouter');
 const {SOURCE_ID,SPECS,parse,readSource,hash}=require('../sourceCatalog');
 const grouping=require('../../public/routeCatalogGroups');
 const warehouses=require('../../public/warehouseGroups');
@@ -22,13 +22,18 @@ router.get('/:kind',async(req,res,next)=>{try{
  const batch=await latest(rawPool,req.params.kind);if(!batch)return res.json({batchId:null,total:0,records:[],issues:[]});
  const q=String(req.query.q||'').trim().slice(0,100),page=Number(req.query.page||1);
  if(!Number.isInteger(page)||page<1||page>10000)return res.status(400).json({error:'頁碼無效'});
- const records=batch.records.filter(r=>(!q||JSON.stringify(r).toLowerCase().includes(q.toLowerCase()))&&grouping.matches(r,window)&&warehouses.matches(r,warehouse));
+ const visible=batch.records.map(r=>{const copy={...r};if(['NB','FN','WB'].includes(req.params.kind))delete copy.sourceDriverId;return copy;});
+ const area=String(req.query.area||'').slice(0,60),vehicleType=String(req.query.vehicleType||'').slice(0,60);
+ const records=visible.filter(r=>(!q||JSON.stringify(r).toLowerCase().includes(q.toLowerCase()))&&(!area||grouping.areas(r).districts.includes(area))&&(!vehicleType||r.vehicleType===vehicleType)&&grouping.matches(r,window)&&warehouses.matches(r,warehouse));
  res.json({batchId:batch.id,total:records.length,catalogTotal:batch.records.length,warehouseGroups:req.params.kind==='drivers'?warehouses.groups(batch.records):undefined,page,records:records.slice((page-1)*50,page*50),issues:batch.issues,updatedAt:batch.created_at,blocked:batch.records.filter(r=>r.problems.length).length});
  }catch(e){next(e);}});
 // Network reads finish before opening a database transaction.
+router.post('/daily/link',requireRole('admin'),async(req,res)=>{try{const rows=await require('../dailyTaskSheet').read(req.body?.url);res.json({rows,...await require('../dailyTasks').preview(rawPool,rows)});}catch(e){res.status(422).json({error:e.status?e.message:'無法讀取連結，請確認網址、分頁欄位與服務帳戶檢視者授權'});}});
+router.post('/daily/preview',requireRole('admin'),async(req,res,next)=>{try{res.json(await require('../dailyTasks').preview(rawPool,req.body?.rows));}catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e);}});
 router.post('/:kind/pull',requireRole('admin'),async(req,res)=>{try{const rows=await readSource(req.params.kind),preview=parse(req.params.kind,rows),current=await latest(rawPool,req.params.kind);res.json({rows,preview,changes:changes(current,preview),expectedBatchId:current?.id||null});}catch(e){res.status(422).json({error:e.message});}});
 router.post('/:kind/preview',requireRole('admin'),async(req,res)=>{try{const preview=parse(req.params.kind,req.body?.rows),current=await latest(rawPool,req.params.kind);res.json({preview,changes:changes(current,preview),expectedBatchId:current?.id||null});}catch(e){res.status(400).json({error:e.message});}});
 const {pool,logAction}=transactionalRouter(router,rawPool,870045);
+router.post('/daily/commit',requireRole('admin'),async(req,res,next)=>{try{if(req.body?.verified!==true)return res.status(400).json({error:'請先核對本次全部任務'});const p=await require('../dailyTasks').preview(pool,req.body?.rows);if(req.body.digest!==p.digest)return res.status(409).json({error:'來源或匯入資料已變更，請重新預覽'});const results=[];for(const item of p.items)results.push(await require('../sourceTripBuilder').buildTrip(pool,item.kind,item,req.user,(...args)=>logAction(req,...args)));await logAction(req,'每日任務匯入','蝦皮門店車趟','batch',JSON.stringify({digest:p.digest,count:results.length}));res.json({results,created:results.filter(r=>!r.duplicate).length,duplicate:results.filter(r=>r.duplicate).length});}catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e);}});
 router.post('/:kind/import',requireRole('admin'),async(req,res,next)=>{try{
  let p;try{p=parse(req.params.kind,req.body?.rows);}catch(e){return res.status(400).json({error:e.message});}
  if(req.body.digest!==p.digest)return res.status(409).json({error:'預覽已變更，請重新預覽'});
@@ -42,31 +47,5 @@ router.post('/:kind/import',requireRole('admin'),async(req,res,next)=>{try{
  await logAction(req,'更新來源名冊','來源資料',result.rows[0].id,`${p.kind} ${p.count}筆，待核對${p.blocked}筆；未修改自有派車資源`);
  res.status(201).json({batchId:result.rows[0].id,count:p.count,blocked:p.blocked});
  }catch(e){next(e);}});
-router.post('/:kind/build-trip',requireRole('admin'),async(req,res,next)=>{try{
- const b=req.body||{};if(!['NB','FN','WB'].includes(req.params.kind)||!isValidDateKey(b.serviceDate)||b.verified!==true||typeof b.routeCode!=='string'||typeof b.pickupPointId!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(b.departureTime||'')||!Number.isInteger(b.quantity)||b.quantity<1||b.quantity>100000)return res.status(400).json({error:'請核對門店、選有效日期、出發時間及每站件數（無件數時不可猜測）'});
- await pool.query('SELECT pg_advisory_xact_lock(870033)');
- const batch=await latest(pool,req.params.kind);if(!batch||String(batch.id)!==String(b.batchId))return res.status(409).json({error:'路線版本已變更，請重新載入'});
- const route=batch.records.find(r=>r.routeCode===b.routeCode);if(!route||route.problems.length)return res.status(409).json({error:'路線不存在或尚有待核對問題，整條路線不拆除停靠站'});
- if(route.routeCode.length>31)return res.status(400).json({error:'路線編號過長，加入日期後超出LINE報到代碼限制，請先調整來源編號'});
- const requested=b.stopOrder===undefined?route.stops.map(s=>s.sequence):b.stopOrder;
- if(!Array.isArray(requested)||requested.length!==route.stops.length||new Set(requested).size!==requested.length||requested.some(n=>!Number.isInteger(n)||!route.stops.some(s=>s.sequence===n)))return res.status(400).json({error:'停靠順序必須包含全部原路線站點，不得重複或遺漏'});
- const orderedStops=requested.map(n=>route.stops.find(s=>s.sequence===n));
- const key=hash([SOURCE_ID,req.params.kind,route.routeCode,b.serviceDate]),taskCode=b.serviceDate.replace(/-/g,'')+'-'+route.routeCode;
- const old=(await pool.query('SELECT trip_id FROM source_catalog_trip_links WHERE source_id=$1 AND kind=$2 AND route_code=$3 AND service_date=$4',[SOURCE_ID,req.params.kind,route.routeCode,b.serviceDate])).rows[0];
- if(old){const trip=(await pool.query('SELECT * FROM delivery_trips WHERE id=$1',[old.trip_id])).rows[0],existingStops=(await pool.query('SELECT o.quantity,o.reference FROM delivery_orders o JOIN delivery_trip_stops s ON s.order_id=o.id WHERE s.trip_id=$1 ORDER BY s.stop_no',[old.trip_id])).rows;if(trip.status==='已取消'||trip.pickup_point_id!==b.pickupPointId||trip.departure_time!==b.departureTime||existingStops.some((s,i)=>s.quantity!==b.quantity||s.reference!=='SRC-'+key.slice(0,24)+'-'+orderedStops[i]?.sequence)||existingStops.length!==orderedStops.length)return res.status(409).json({error:'此日此路線已有不同安排或取消紀錄，請先查看既有車趟，不能重複建立'});return res.json({tripId:old.trip_id,taskCode:trip.task_code,duplicate:true});}
- const pickup=(await pool.query('SELECT p.*,w.address AS warehouse_address FROM delivery_pickup_points p JOIN delivery_warehouses w ON w.id=p.warehouse_id WHERE p.id=$1',[b.pickupPointId])).rows[0];
- if(!pickup||pickup.box_type!==route.boxType)return res.status(400).json({error:'取貨點箱型不符：N／F大園橘箱，W楊梅黑箱'});
- const trip=(await pool.query(`INSERT INTO delivery_trips(request_id,request_hash,warehouse_id,service_date,departure_time,note,created_by,warehouse_address,task_code,task_name,required_checkins,pickup_point_id,pickup_point_name,box_type) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,1,$11,$12,$13) RETURNING *`,[crypto.randomUUID(),key,pickup.warehouse_id,b.serviceDate,b.departureTime,'來源路線範本；來源司機僅供參考，未自動指派',req.user.username,pickup.warehouse_address,taskCode,route.routeCode+' '+route.serviceType,pickup.id,pickup.name,pickup.box_type])).rows[0];
- for(const [index,stop] of orderedStops.entries()){
-  const storeCode='SRC-'+hash([stop.name,stop.address]).slice(0,24).toUpperCase();
-  let store=(await pool.query('SELECT * FROM delivery_stores WHERE code=$1',[storeCode])).rows[0];
-  if(store&&(!store.active||!store.verified||store.name!==stop.name||store.address!==stop.address))return res.status(409).json({error:'門店已停用、尚未核對或資料衝突，請先人工核對'});
-  if(!store)store=(await pool.query('INSERT INTO delivery_stores(code,name,city,district,address,source,verified) VALUES($1,$2,$3,$4,$5,$6,TRUE) RETURNING *',[storeCode,stop.name,stop.city,stop.district,stop.address,`https://docs.google.com/spreadsheets/d/${SOURCE_ID}/edit#gid=${batch.sheet_id}`])).rows[0];
-  const order=(await pool.query("INSERT INTO delivery_orders(reference,warehouse_id,store_id,service_date,quantity,note,status,created_by,pickup_point_id,route_code) VALUES($1,$2,$3,$4,$5,$6,'已安排',$7,$8,$9) RETURNING id",['SRC-'+key.slice(0,24)+'-'+stop.sequence,pickup.warehouse_id,store.id,b.serviceDate,b.quantity,stop.note,req.user.username,pickup.id,route.routeCode])).rows[0];
-  await pool.query('INSERT INTO delivery_trip_stops(trip_id,order_id,stop_no,store_code,store_name,city,district,address,route_code) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[trip.id,order.id,index+1,store.code,stop.name,stop.city,stop.district,stop.address,route.routeCode]);
- }
- await pool.query('INSERT INTO source_catalog_trip_links(source_id,kind,route_code,service_date,batch_id,trip_id) VALUES($1,$2,$3,$4,$5,$6)',[SOURCE_ID,req.params.kind,route.routeCode,b.serviceDate,batch.id,trip.id]);
- await logAction(req,'來源路線建立車趟','蝦皮門店車趟',trip.id,`${route.routeCode} ${route.stops.length}站；來源批次${batch.id}；原站序${requested.join(',')}；尚未派車及發送LINE`);
- res.status(201).json({tripId:trip.id,taskCode:trip.task_code,stops:route.stops.length});
- }catch(e){next(e);}});
+router.post('/:kind/build-trip',requireRole('admin'),async(req,res,next)=>{try{const result=await require('../sourceTripBuilder').buildTrip(pool,req.params.kind,req.body||{},req.user,(...args)=>logAction(req,...args));res.status(result.duplicate?200:201).json(result);}catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e);}});
 module.exports=router;

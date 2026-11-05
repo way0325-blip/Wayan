@@ -8,9 +8,9 @@ const SPECS=Object.freeze({
  parking:{name:'園區停車場清冊',sheetId:481811313,columns:[0,1,2,3,4],end:1000},
  vehicles:{name:'S-SOC車輛名單',sheetId:1504866403,columns:[0,1,2,3],end:1000},
  cars:{name:'汽車造冊名單',sheetId:1909462096,columns:[0,1,2,3,4],end:1000},
- NB:{name:'北倉-店配路線規劃表',sheetId:946527726,columns:[1,2,3,4,5,6,7,8,9],end:585},
- FN:{name:'北倉- NDD路線規劃表',sheetId:900699516,columns:[1,2,3,4,5,6,7,8,9],end:1300},
- WB:{name:'北倉-WH NDD路線規劃表',sheetId:1820354237,columns:[1,2,3,4,5,6,7,8,9],end:3396},
+ NB:{name:'北倉-店配路線規劃表',sheetId:946527726,columns:[1,2,4,5,6,7,8,9],end:585},
+ FN:{name:'北倉- NDD路線規劃表',sheetId:900699516,columns:[1,2,4,5,6,7,8,9],end:1300},
+ WB:{name:'北倉-WH NDD路線規劃表',sheetId:1820354237,columns:[1,2,4,5,6,7,8,9],end:3396},
 });
 const HEADERS={drivers:{2:'中文姓名',3:'車輛類型',5:'駕照類型',6:'駕照到期日',7:'手機號碼',8:'倉別',9:'狀態',10:'司機編號',11:'員工ID',14:'廠區安全規範 繳交'},parking:{0:'供應商',1:'營業貨車_車牌',2:'營業貨車_車型',3:'自用車_車牌',4:'自用車_車主司機編號'},vehicles:{0:'車牌號碼',1:'車型',2:'司機姓名',3:'司機編號'},cars:{0:'登錄日期',1:'車類型',2:'車牌號碼 (不須加"-")',3:'聯絡電話 (不須加"-")',4:'使否提交長榮'}};
 const hash=v=>crypto.createHash('sha256').update(JSON.stringify(v)).digest('hex');
@@ -30,7 +30,7 @@ function parse(kind,rows){
    if(c[1]){
     const route=routing.classify(c[1]);
     if(!route||route.code[0]!==kind[0]){issue(row.sourceRow,'路線前綴與分頁不符');current=null;continue;}
-    current={key:route.code,sourceRow:row.sourceRow,routeCode:route.code,boxType:route.boxType,serviceType:route.serviceType,vehicleType:c[2],sourceDriverId:c[3],timeWindow:c[4],dock:c[5],stops:[],problems:[]};
+    current={key:route.code,sourceRow:row.sourceRow,routeCode:route.code,boxType:route.boxType,serviceType:route.serviceType,vehicleType:c[2],timeWindow:c[4],dock:c[5],stops:[],problems:[]};
     if(keys.has(current.key)){current.problems.push('路線編號重複區塊');keys.get(current.key).problems.push('路線編號重複區塊');}else keys.set(current.key,current);
     records.push(current);
    }
