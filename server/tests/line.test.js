@@ -153,3 +153,5 @@ test('legacy dispatch push and scheduled reports remain available to authorised 
 test('help reveals commands without operational data',async()=>{
   await send([event('說明','Uunknown')]);assert.match(last(),/可用指令/);assert.doesNotMatch(last(),/EMCU/);
 });
+
+test('LINE API failures retain safe status codes without response-body secrets',async()=>{const previous=global.fetch;try{global.fetch=async()=>({status:429,ok:false,text:async()=>'PRIVATE_PROVIDER_RESPONSE'});await assert.rejects(()=>line.pushMessage('TEST_GROUP','測試'),e=>e.code==='LINE_RATE_LIMITED'&&e.httpStatus===429&&!e.message.includes('PRIVATE_PROVIDER_RESPONSE'));}finally{global.fetch=previous;}});

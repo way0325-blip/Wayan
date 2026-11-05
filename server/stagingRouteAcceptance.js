@@ -12,7 +12,7 @@ async function setup(pool,env=process.env){
  if(!/^[a-f0-9-]{36}$/i.test(requestId)||env.STAGING_ROUTE_ACCEPTANCE_DATE!==todayInTaipei())throw Error('INVALID_ACCEPTANCE_REQUEST');
  return transaction(pool,async db=>{
   await db.query('SELECT pg_advisory_xact_lock(870045)');await db.query('SELECT pg_advisory_xact_lock(870033)');
-  const setting='route-acceptance-request:'+requestId,prior=(await db.query('SELECT value FROM settings WHERE key=$1',[setting])).rows[0];if(prior)return {...JSON.parse(prior.value),status:'existing'};
+  const setting='route-acceptance-request:'+requestId,prior=(await db.query('SELECT value FROM settings WHERE key=$1',[setting])).rows[0];if(prior){const result=JSON.parse(prior.value),job=(await db.query("SELECT status,attempts,error_code FROM fleet_delivery_jobs WHERE payload->>'tripId'=$1 ORDER BY created_at DESC LIMIT 1",[result.tripId])).rows[0];return {...result,status:'existing',job};}
   const fleet=(await db.query("SELECT f.*,g.group_id FROM partner_fleets f JOIN line_fleet_groups g ON g.fleet_id=f.id JOIN line_group_registry r ON r.group_id=g.group_id WHERE f.id=$1 AND f.name=$2 AND f.status='啟用' AND r.bot_present=TRUE",[env.STAGING_ROUTE_ACCEPTANCE_FLEET_ID,env.STAGING_ROUTE_ACCEPTANCE_FLEET_NAME])).rows[0];if(!fleet)throw Error('VERIFIED_ACCEPTANCE_FLEET_REQUIRED');
   const batches=(await db.query("SELECT DISTINCT ON(kind) kind,records FROM source_catalog_batches WHERE kind IN ('NB','FN','WB') ORDER BY kind,id DESC")).rows;
   const choices=batches.flatMap(b=>b.records.filter(r=>!r.problems.length&&r.stops.length>0&&r.stops.length<=10));if(!choices.length)throw Error('NO_VERIFIED_ROUTE_TEMPLATE');
