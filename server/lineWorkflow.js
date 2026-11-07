@@ -4,7 +4,7 @@ const { transaction, audit } = require('./transaction');
 const { replyMessage } = require('./line');
 const { todayInTaipei } = require('./dates');
 const {handleFleetGroupEvent}=require('./fleetOperations');
-const HELP = '【可用指令】\n綁定 管理員提供的一次性代碼\n我的任務／待派車／已完成／統計\n到站 訂單編號\n完成 訂單編號或完整櫃號\n異常 訂單編號 說明\n事故 訂單編號 說明\n請在私人對話操作；只可查詢及回報自己的任務。';
+const HELP = '【可用指令】\n綁定 管理員提供的一次性代碼\n我的路線 任務編號（已接取後）\n我的任務／待派車／已完成／統計\n到站 訂單編號\n完成 訂單編號或完整櫃號\n異常 訂單編號 說明\n事故 訂單編號 說明\n請在私人對話操作；只可查詢及回報自己的任務。';
 const codeHash = code => crypto.createHash('sha256').update(code).digest('hex');
 function eventId(event) {
   return event.webhookEventId || crypto.createHash('sha256').update(JSON.stringify({
@@ -19,9 +19,10 @@ async function handleEvent(db, event, id) {
   if (event.type !== 'message' || event.message?.type !== 'text') return null;
   const fleetReply=await handleFleetGroupEvent(db,event,id);
   if(fleetReply!==null) return fleetReply;
-  if (event.source?.type !== 'user' || !event.source.userId) return '為保護派車資料，請私訊 Wayan Bot 操作。';
+  if (event.source?.type !== 'user' || !event.source.userId) return /^(我的任務|待派車|已完成|統計|到站|完成|異常|事故|我的路線|接取|車趟報到|退趟|改報)(?:\s|$)/.test(String(event.message.text||'').trim())?'為保護派車資料，請私訊 Wayan Bot 操作。':null;
   const text = String(event.message.text || '').trim();
   const userId = event.source.userId;
+  const routeReply=await require('./driverRouteClaims').privateQuery(db,text,userId,id);if(routeReply!==null)return routeReply;
   if (/^(說明|help|指令)$/i.test(text)) return HELP;
   if (/^(異常回報|取消回報|異常進度)(?:\s|$)/.test(text))return '車隊異常請在已綁定的車隊LINE群組輸入「異常回報」。私人對話的任務異常仍須先綁定司機，使用「異常 訂單編號 說明」。';
   const bind = text.match(/^綁定\s+([A-Za-z0-9_-]{22})$/);

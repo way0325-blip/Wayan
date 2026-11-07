@@ -60,12 +60,15 @@ async function handleFleetGroupEvent(db,event,eventId){
   }
   await db.query('SELECT pg_advisory_xact_lock(870033)');
   const fleet=(await db.query(`SELECT f.id,f.name,f.status FROM line_fleet_groups g JOIN partner_fleets f ON f.id=g.fleet_id WHERE g.group_id=$1 FOR SHARE OF g,f`,[groupId])).rows[0];
-  if(!fleet)return /^(異常回報|取消回報|異常進度)(?:\s|$)/.test(text)?'此群組尚未綁定車隊，請聯絡管理員綁定後再回報。':null;
+  if(!fleet)return /^(異常回報|取消回報|異常進度|車隊任務|任務|門店車趟|接取|接取路線|車趟報到|車趟狀態|退趟|退車趟|改報)(?:\s|$)/.test(text)?'此群組尚未綁定車隊，請聯絡管理員綁定後再回報。':null;
   if(fleet.status!=='啟用') return '車隊已停用，請聯絡管理員。';
+  const returned=await require('./tripReturns').handle(db,text,fleet,userId,eventId);if(returned!==null)return returned;
+  const routeClaim=await require('./driverRouteClaims').handleGroup(db,text,fleet,userId,eventId);if(routeClaim!==null)return routeClaim;
   const checkin=await require('./deliveryCheckins').handle(db,text,fleet,userId,eventId);
   if(checkin!==null)return checkin;
   const intake=await require('./lineIncidentIntake').handle(db,event,eventId,fleet);if(intake!==null)return intake;
   if(text==='門店車趟')return require('./deliveryLine').list(db,fleet);
+  if(/^(說明|help|指令)$/i.test(text))return '【車隊指令】\n門店車趟\n接取 路線編號 司機ID\n車趟報到 路線編號\n退趟 路線編號 原因\n改報 原路線 新路線 司機ID 原因\n完整路線請本人私訊：我的路線 任務編號\n異常回報／異常進度 案件編號';
   const keyword=await require('./lineKeywords').keywordReply(db,text);
   if(keyword!==null)return keyword;
   const actor={username:`LINE車隊:${fleet.id}:${userId.slice(-6)}`,role:'fleet'};
@@ -76,7 +79,7 @@ async function handleFleetGroupEvent(db,event,eventId){
     return `【${fleet.name} 任務】\n`+(tasks.map(t=>`${taskNumber(t.id)} ${t.service_date} ${t.origin}→${t.destination} ${t.requested_trucks}車 ${t.status}`).join('\n')||'目前沒有待處理任務。');
   }
   const command=text.match(/^(承接|拒絕|到站|完成|異常|延誤|貨損|事故|車輛異常)\s+(\S+)(?:\s+([\s\S]+))?$/);
-  if(!command) return '【車隊指令】\n車隊任務\n承接 T任務編號 車數\n拒絕 T任務編號 原因\n到站 T任務編號\n完成 T任務編號\n異常／延誤／貨損／事故／車輛異常 T任務編號 說明';
+  if(!command) return /^(說明|help|指令)$/i.test(text)?'【車隊指令】\n接取 路線編號 司機ID\n車趟報到 路線編號\n退趟 路線編號 原因\n改報 原路線 新路線 司機ID 原因\n車隊任務\n承接 T任務編號 車數\n拒絕 T任務編號 原因\n到站 T任務編號\n完成 T任務編號\n異常／延誤／貨損／事故／車輛異常 T任務編號 說明':null;
   const [,kind,identifier,detail]=command,id=parseTask(identifier);
   if(!id) return '任務編號格式錯誤，請使用通知中的 T任務編號。';
   await db.query('SELECT pg_advisory_xact_lock(870033)');

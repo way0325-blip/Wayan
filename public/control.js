@@ -54,7 +54,7 @@
           if(frame.includes('event: expired')) {logout();return;}
           if(frame.includes('event: offline')) sync('offline','同步中斷 · 正在重連');
           if(frame.includes('event: ready')) {sync('online','● 即時同步已連線');scheduleRefresh();document.dispatchEvent(new Event('wayan:refresh'));}
-          if(frame.includes('event: refresh')) {scheduleRefresh();document.dispatchEvent(new Event('wayan:refresh'));}
+          if(frame.includes('event: refresh')) {scheduleRefresh();let detail={};try{detail=JSON.parse(frame.split('data: ')[1]||'{}');}catch{}document.dispatchEvent(new CustomEvent('wayan:refresh',{detail}));}
         }
       }
     } catch(err) {if(err.name==='AbortError') return;}

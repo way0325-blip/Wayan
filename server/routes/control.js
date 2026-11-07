@@ -58,8 +58,8 @@ router.get('/events', (req,res)=>{
   res.set({'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});
   res.flushHeaders();
   let closed=false;
-  const send=type=>{
-    if (!closed && !res.write(`event: ${type}\ndata: {}\n\n`)) res.end();
+  const send=(type,table)=>{
+    if (!closed && !res.write(`event: ${type}\ndata: ${JSON.stringify(table?{table}:{})}\n\n`)) res.end();
   };
   const unsubscribe=subscribe(send);
   let checking=false;

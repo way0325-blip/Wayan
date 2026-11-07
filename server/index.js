@@ -116,6 +116,7 @@ app.use('/api/penalty-cases',require('./routes/penaltyCases'));
 app.use('/api/store-delivery',require('./routes/storeDelivery'));
 app.use('/api/shopee-live',require('./routes/shopeeLive'));
 app.use('/api/source-catalog',require('./routes/sourceCatalog'));
+app.use('/api/driver-routes',require('./routes/driverRoutes'));
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 app.use('/api', (req,res)=>res.status(404).json({error:'找不到 API'}));
