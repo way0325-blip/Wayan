@@ -94,6 +94,7 @@ async function processEvent(id) {
       return {reply,token:row.payload.replyToken};
     });
     if (result?.reply && result.token) await deliverReply(id,result.token,result.reply);
+    if(result)await require('./stagingQuotaDiagnostics').record(id).catch(()=>console.error('STAGING_QUOTA_DIAGNOSTIC_FAILED'));
     return true;
   } catch {
     await pool.query("UPDATE line_events SET status='failed',attempts=attempts+1,error_code='PROCESSING_FAILED' WHERE event_id=$1 AND status<>'processed'",[id]);

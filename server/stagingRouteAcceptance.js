@@ -24,10 +24,12 @@ async function setup(pool,env=process.env){
    const order=(await db.query("INSERT INTO delivery_orders(reference,warehouse_id,store_id,service_date,quantity,note,status,created_by,pickup_point_id,route_code) VALUES($1,$2,$3,$4,1,'[模擬] 件數1僅供驗收，不可實際出車','已安排','驗收程序',$5,$6) RETURNING id",[code+'-'+i,pickup.warehouse_id,store.id,date,pickup.id,code])).rows[0];
    await db.query('INSERT INTO delivery_trip_stops(trip_id,order_id,stop_no,store_code,store_name,city,district,address,route_code) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[t.id,order.id,i+1,code+'-'+i,'[測試]'+s.name,s.city,s.district,s.address,code]);
   }
-  await db.query('INSERT INTO settings(key,value) VALUES($1,$2)',['route-acceptance:'+t.id,JSON.stringify({fleetId:fleet.id,date,expiresAt:Date.now()+23*3600000})]);
+  const noPush=env.STAGING_ROUTE_ACCEPTANCE_NO_PUSH==='yes';
+  if(!noPush)await db.query('INSERT INTO settings(key,value) VALUES($1,$2)',['route-acceptance:'+t.id,JSON.stringify({fleetId:fleet.id,date,expiresAt:Date.now()+23*3600000})]);
+  if(noPush)await db.query('INSERT INTO settings(key,value) VALUES($1,$2)',['quota-checkin:'+code,JSON.stringify({tripId:String(t.id),date})]);
   const actor={username:'使用者授權測試',role:'admin'};await audit(db,actor,'建立LINE路線驗收','蝦皮門店車趟',t.id,JSON.stringify({code,referenceRoute:route.routeCode}));
-  const queued=await require('./deliveryLine').queue(db,t,actor);if(queued.error)throw Error('ACCEPTANCE_QUEUE_REJECTED');await db.query("UPDATE fleet_delivery_jobs SET next_attempt_at=NOW()+INTERVAL '90 seconds' WHERE payload->>'tripId'=$1 AND first_send_at IS NULL",[String(t.id)]);
-  const result={status:'created',tripId:String(t.id),taskCode:code,referenceRouteCode:route.routeCode,date,stops:route.stops.length,fleetName:fleet.name};await db.query('INSERT INTO settings(key,value) VALUES($1,$2)',[setting,JSON.stringify(result)]);return result;
+  if(!noPush){const queued=await require('./deliveryLine').queue(db,t,actor);if(queued.error)throw Error('ACCEPTANCE_QUEUE_REJECTED');await db.query("UPDATE fleet_delivery_jobs SET next_attempt_at=NOW()+INTERVAL '90 seconds' WHERE payload->>'tripId'=$1 AND first_send_at IS NULL",[String(t.id)]);}
+  const result={status:'created',noPush,tripId:String(t.id),taskCode:code,referenceRouteCode:route.routeCode,date,stops:route.stops.length,fleetName:fleet.name};await db.query('INSERT INTO settings(key,value) VALUES($1,$2)',[setting,JSON.stringify(result)]);return result;
  });
 }
 module.exports={setup,allowed};
