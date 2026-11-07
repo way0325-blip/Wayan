@@ -29,8 +29,8 @@ router.get('/summary', async (req,res,next) => {
       (SELECT count(*)::int FROM operational_incidents WHERE status='待處理') AS open_incidents,
       (SELECT count(DISTINCT order_id)::int FROM operational_incidents WHERE status='待處理' AND order_id IS NOT NULL) AS abnormal_trips,
       (SELECT count(*)::int FROM line_events WHERE status='failed' OR delivery_status='failed') AS failed_events,
-      (SELECT count(*)::int FROM penalty_cases WHERE status IN ('待覆核','申訴中')) AS "pendingViolations"`, [date])).rows[0];
-    res.set('Cache-Control','no-store').json({...result,date,updatedAt:new Date().toISOString()});
+      (SELECT count(*)::int FROM penalty_cases WHERE status IN ('待覆核','申訴中')) AS "pendingViolations",${require('../operationsSummary')}`, [date])).rows[0];
+    res.set('Cache-Control','no-store').json({...result,environment:process.env.WAYAN_ENV||'unknown',date,updatedAt:new Date().toISOString()});
   } catch(err) {next(err);}
 });
 router.get('/incidents', async(req,res,next)=>{
@@ -58,8 +58,8 @@ router.get('/events', (req,res)=>{
   res.set({'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});
   res.flushHeaders();
   let closed=false;
-  const send=type=>{
-    if (!closed && !res.write(`event: ${type}\ndata: {}\n\n`)) res.end();
+  const send=(type,table)=>{
+    if (!closed && !res.write(`event: ${type}\ndata: ${JSON.stringify(table?{table}:{})}\n\n`)) res.end();
   };
   const unsubscribe=subscribe(send);
   let checking=false;

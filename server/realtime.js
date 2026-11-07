@@ -20,7 +20,7 @@ async function connect() {
   };
   next.on('error', fail);
   next.on('end', fail);
-  next.on('notification', () => { for (const fn of subscribers) fn('refresh'); });
+  next.on('notification', message => {const table=/^[a-z_]{1,60}$/.test(message.payload||'')?message.payload:'';for(const fn of subscribers)fn('refresh',table);});
   try {
     await next.connect();
     await next.query('LISTEN wayan_changes');

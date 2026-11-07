@@ -66,6 +66,7 @@ app.use(
 );
 
 app.use('/api/store-delivery',express.json({limit:'2mb'}));
+app.use('/api/source-catalog',express.json({limit:'3mb'}));
 app.use(express.json({ limit: "100kb" }));
 
 // 全站 API 速率限制,避免暴力嘗試或濫用
@@ -73,6 +74,7 @@ const apiLimiter = rateLimit({
   skip: req => req.method === 'GET' && req.path.startsWith('/control/'),
   windowMs: 15 * 60 * 1000,
   limit: 300,
+  message:{error:'操作過於頻繁，請稍後重試'},
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -86,7 +88,11 @@ const loginLimiter = rateLimit({
   message: { error: "登入嘗試次數過多,請 15 分鐘後再試" },
 });
 
-app.use("/api", apiLimiter);
+const readApiLimiter=rateLimit({
+  skip:req=>req.path.startsWith('/control/'),windowMs:15*60*1000,limit:600,
+  standardHeaders:true,legacyHeaders:false,message:{error:'查詢過於頻繁，請稍後再更新'},
+});
+app.use('/api',(req,res,next)=>req.method==='GET'?readApiLimiter(req,res,next):apiLimiter(req,res,next));
 app.use("/api/auth/login", loginLimiter);
 
 app.use("/api/auth", authRoutes);
@@ -109,6 +115,8 @@ app.use('/api/penalty-rules',require('./routes/penaltyRules'));
 app.use('/api/penalty-cases',require('./routes/penaltyCases'));
 app.use('/api/store-delivery',require('./routes/storeDelivery'));
 app.use('/api/shopee-live',require('./routes/shopeeLive'));
+app.use('/api/source-catalog',require('./routes/sourceCatalog'));
+app.use('/api/driver-routes',require('./routes/driverRoutes'));
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 app.use('/api', (req,res)=>res.status(404).json({error:'找不到 API'}));
@@ -132,13 +140,19 @@ async function start() {
     throw new Error('測試平台啟動需要獨立的 JWT_SECRET（至少 32 字）及 ADMIN_PASSWORD（至少 12 字），禁止沿用展示密碼');
   }
   await initDb();
+  try {const demo=await require('./stagingDemoOrders').setupStagingDemo(require('./db').pool);if(demo.status!=='disabled')console.log('STAGING_DEMO_ORDERS',JSON.stringify(demo));}catch(err){console.error('STAGING_DEMO_ORDERS_FAILED',err.code||'SETUP_FAILED');}
   try {
     const setup=await require('./stagingFleetBootstrap').setupStagingFleet(require('./db').pool);
     if(setup.status!=='disabled')console.log('STAGING_FLEET_SETUP',JSON.stringify(setup));
   } catch(err) { console.error('STAGING_FLEET_SETUP_FAILED',err.code||'SETUP_FAILED'); }
+  try{const checkins=await require('./stagingCheckinSetup').setupStagingCheckins(require('./db').pool);if(checkins.status!=='disabled')console.log('STAGING_CHECKIN_SETUP',JSON.stringify(checkins));}catch(err){console.error('STAGING_CHECKIN_SETUP_FAILED',err.aliasError||err.dispatchStatus?err.message:(err.code||err.name||'SETUP_FAILED'));}
+  try{const result=await require('./stagingRouteAcceptance').setup(require('./db').pool);if(result.status!=='disabled')console.log('STAGING_ROUTE_ACCEPTANCE',JSON.stringify(result));}catch(e){console.error('STAGING_ROUTE_ACCEPTANCE_FAILED',e.code||'SETUP_FAILED');}
   require('./fleetJobs').startFleetWorker();
   app.listen(PORT, () => {
     console.log(`港區星際運輸調度中心伺服器已啟動: http://localhost:${PORT}`);
+    require('./sourceCatalogBootstrap').bootstrapSourceCatalog(require('./db').pool)
+      .then(result=>{if(result.length)console.log('SOURCE_CATALOG_INITIAL_IMPORT',JSON.stringify(result));})
+      .catch(()=>console.error('SOURCE_CATALOG_INITIAL_IMPORT_FAILED'));
   });
 }
 

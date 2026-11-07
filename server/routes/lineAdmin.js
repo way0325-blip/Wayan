@@ -31,6 +31,7 @@ router.post('/binding-codes',async(req,res,next)=>{
     res.set('Cache-Control','no-store').status(result.status||201).json(result);
   } catch(err) {next(err);}
 });
+router.post('/roster-binding-codes',async(req,res,next)=>{try{const result=await transaction(pool,db=>require('../driverRouteClaims').createRosterCode(db,req.body,req.user));res.set('Cache-Control','no-store').status(201).json(result);}catch(e){if(e.claimStatus)return res.status(e.claimStatus).json({error:e.message});next(e);}});
 router.delete('/bindings/:driverId',async(req,res,next)=>{
   try {
     await transaction(pool,async db=>{

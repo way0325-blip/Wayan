@@ -131,3 +131,34 @@ test('incident-linked penalties require verified rules, reject fleet mismatch an
 });
 
 test('LINE task formatter keeps commands when large routes need shortening',()=>{const c=require('../deliveryCheckins');const t={id:1,task_code:'TEST',task_name:'測試',service_date:day,departure_time:'08:00',warehouse_name:'測試倉',warehouse_address:'測試地址',status:'待派車',required_checkins:30};const stops=Array.from({length:200},(_,i)=>({stop_no:i+1,store_code:'S'+i,store_name:'測試店',city:'桃園市',district:'觀音區',address:'測試'.repeat(100)}));const text=c.format(t,stops,1,4200);assert.ok(text.length<=4200);assert.match(text,/車趟報到 TEST/);assert.match(text,/車趟異常 TEST/);assert.match(text,/尚缺 29/);});
+
+// Export uses the same authorized Shopee order data, with explicit date bounds.
+test('Shopee CSV export requires login and validates mandatory date range',async()=>{
+ const path='/api/store-delivery/orders/export/csv';assert.equal((await api('GET',path+'?from='+day+'&to='+day,undefined,null)).status,401);
+ for(const query of ['', '?from=2026-02-30&to=2026-03-01','?from=2026-11-03&to=2026-11-02','?from=2026-01-01&to=2026-03-01'])assert.equal((await api('GET',path+query)).status,400);
+});
+test('Shopee export filters historical dates, includes trip data and audits download',async()=>{
+ await order('A',{reference:'EXPORT-HISTORY',serviceDate:'2025-01-02',note:'=HYPERLINK("evil")'});
+ const r=await fetch(base+'/api/store-delivery/orders/export/csv?from=2025-01-02&to=2025-01-02',{headers:{Authorization:'Bearer '+ops}});assert.equal(r.status,200);assert.match(r.headers.get('content-type'),/text\/csv/);const csv=await r.text();assert.match(csv,/EXPORT-HISTORY/);assert.match(csv,/蝦皮|訂單編號/);assert.match(csv,/車趟編號/);assert.match(csv,/'=HYPERLINK/);assert.ok(!csv.includes('ROLLBACK-ORDER'));
+ const todayCsv=await fetch(base+'/api/store-delivery/orders/export/csv?from='+require('../dates').todayInTaipei()+'&to='+require('../dates').todayInTaipei(),{headers:{Authorization:'Bearer '+token}});const todayText=await todayCsv.text();assert.match(todayText,/MY-30/);assert.match(todayText,/門店測試車隊/);assert.ok(!todayText.includes('EXPORT-HISTORY'));
+ const empty=await fetch(base+'/api/store-delivery/orders/export/csv?from=2024-01-01&to=2024-01-01',{headers:{Authorization:'Bearer '+token}});assert.equal((await empty.text()).split('\r\n').length,1);
+ assert.ok((await pool.query("SELECT 1 FROM audit_logs WHERE action='匯出訂單' AND entity='蝦皮門店訂單'")).rowCount);
+});
+test('CSV exports neutralize formulas, tabs, newlines and escape quotes',()=>{const {cell}=require('../deliveryExport');for(const value of ['=1',' +SUM(1)','-1','@test','\tdata','\n=1'])assert.ok(cell(value).startsWith('"\''));assert.equal(cell('a"b'),'"a""b"');});
+
+test('five pickup points preserve legacy warehouses and classify all supplied route codes',async()=>{
+ const config=(await api('GET','/api/store-delivery/config')).data;assert.equal(config.warehouses.length,3);assert.equal(config.pickupPoints.length,5);assert.equal(config.routeExamples.length,13);assert.ok(config.pickupPoints.every(p=>p.address===''));
+ const {classify}=require('../../public/deliveryRouting');for(const code of config.routeExamples){const r=classify(code);assert.equal(r.code,code);assert.equal(r.boxType,code[0]==='W'?'黑箱':'橘箱');assert.ok(config.pickupPoints.some(p=>p.box_type===r.boxType));}assert.equal(classify('NB-03-484-1橘箱').serviceType,'店配');assert.equal(classify('FN-01-292-1').serviceType,'隔日到貨');assert.equal(classify('WB-01-202-1黑箱').serviceType,'黑箱隔日到貨');assert.equal(classify('NB-03-484-1黑箱'),null);assert.equal(classify('X-1'),null);
+});
+test('route imports enforce box, area and pickup point and roll back mixed invalid batches',async()=>{
+ const baseRow={reference:'PICKUP-ROLLBACK',warehouseId:'DAYUAN',storeCode:'A',serviceDate:day,quantity:1,routeCode:'NB-03-484-1',pickupPointId:'CHANGRONG'};
+ for(const changed of [{pickupPointId:''},{pickupPointId:'RENMEI'},{routeCode:'WB-01-202-1'},{warehouseId:'YANGMEI'},{routeCode:'X-1'}])assert.equal((await api('POST','/api/store-delivery/orders/import',{rows:[{...baseRow,...changed}]})).status,400);
+ assert.equal((await api('POST','/api/store-delivery/orders/import',{rows:[baseRow,{...baseRow,reference:'PICKUP-BAD',pickupPointId:'RENMEI'}]})).status,400);assert.equal((await pool.query("SELECT 1 FROM delivery_orders WHERE reference='PICKUP-ROLLBACK'")).rowCount,0);
+ for(const [reference,pickupPointId,routeCode] of [['PICKUP-A','CHANGRONG','NB-03-484-1'],['PICKUP-B','SHUIYUAN','FN-01-292-1'],['PICKUP-C','CHANGRONG','FM-01-281-1']])assert.equal((await order('A',{reference,pickupPointId,routeCode})).status,201);
+ assert.equal((await order('A',{reference:'PICKUP-W',warehouseId:'YANGMEI',pickupPointId:'RENMEI',routeCode:'WB-01-202-1黑箱'})).status,201);
+});
+test('trips reject mixed pickup points and snapshot same-point routes into LINE and exports',async()=>{
+ const rows=(await api('GET','/api/store-delivery/orders?date='+day)).data;const find=ref=>rows.find(o=>o.reference===ref);const body={requestId:crypto.randomUUID(),orderIds:[find('PICKUP-A').id,find('PICKUP-B').id],departureTime:'09:00'};assert.equal((await api('POST','/api/store-delivery/trips',body)).status,409);
+ const r=await api('POST','/api/store-delivery/trips',{...body,requestId:crypto.randomUUID(),orderIds:[find('PICKUP-A').id,find('PICKUP-C').id]});assert.equal(r.status,201);assert.equal(r.data.pickup_point_name,'長榮倉');assert.equal(r.data.box_type,'橘箱');assert.equal(r.data.warehouse_address,'');const text=(await api('GET','/api/store-delivery/trips/'+r.data.id+'/line-text')).data.text;assert.match(text,/長榮倉（橘箱）/);assert.match(text,/NB-03-484-1/);assert.match(text,/FM-01-281-1/);
+ const csv=await fetch(base+'/api/store-delivery/orders/export/csv?from='+day+'&to='+day,{headers:{Authorization:'Bearer '+token}});const contents=await csv.text();assert.match(contents,/取貨點/);assert.match(contents,/長榮倉/);assert.match(contents,/黑箱隔日到貨/);assert.match(contents,/WB-01-202-1/);
+});

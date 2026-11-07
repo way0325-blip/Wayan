@@ -55,8 +55,10 @@ async function callLineApi(path, body, retryKey) {
   });
   if (res.status===409 && retryKey && res.headers?.get('x-line-accepted-request-id')) return;
   if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`LINE API ${path} 失敗(${res.status}):${detail.slice(0, 300)}`);
+    await res.text().catch(() => "");
+    const code=res.status===429?'LINE_RATE_LIMITED':res.status===401||res.status===403?'LINE_AUTH_REJECTED':'LINE_API_REJECTED';
+    console.error('LINE_API_FAILURE',JSON.stringify({path,status:res.status,code}));
+    throw Object.assign(new Error(`LINE API ${path} 失敗(${res.status})`),{code,httpStatus:res.status});
   }
 }
 
