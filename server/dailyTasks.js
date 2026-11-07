@@ -2,7 +2,7 @@ const {SOURCE_ID,hash}=require('./sourceCatalog');
 const {isValidDateKey}=require('./dates');
 const reject=message=>{throw Object.assign(new Error(message),{status:400});};
 async function preview(db,rows){
- if(!Array.isArray(rows)||!rows.length||rows.length>100)reject('每日匯入限1～100條路線');
+ if(!Array.isArray(rows)||!rows.length||rows.length>200)reject('每日匯入限1～200條路線');
  const batches=new Map(),pickups=(await db.query('SELECT * FROM delivery_pickup_points')).rows,seen=new Set(),items=[];
  for(const [index,r]of rows.entries()){
   if(!r||typeof r!=='object')reject('第'+(index+1)+'列格式錯誤');

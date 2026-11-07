@@ -12,7 +12,8 @@ router.get('/config',(req,res)=>res.json({sourceId:SOURCE_ID,specs:SPECS,service
 router.get('/:kind/options',async(req,res,next)=>{try{
  if(!['NB','FN','WB'].includes(req.params.kind))return res.status(400).json({error:'請選擇N、F或W路線清單'});
  const batch=await latest(rawPool,req.params.kind);
- const routes=(batch?.records||[]).map(r=>({routeCode:r.routeCode,vehicleType:r.vehicleType,boxType:r.boxType,timeWindow:r.timeWindow,window:grouping.timeWindow(r.timeWindow),areas:grouping.areas(r),stopCount:r.stops.length,firstStop:r.stops[0]?.name||'',lastStop:r.stops.at(-1)?.name||'',blocked:r.problems.length>0})).sort((a,b)=>a.routeCode.localeCompare(b.routeCode,'en',{numeric:true}));
+ const q=String(req.query.q||'').trim().slice(0,100),window=String(req.query.window||''),area=String(req.query.area||'').slice(0,60),vehicleType=String(req.query.vehicleType||'').slice(0,60);
+ const routes=(batch?.records||[]).filter(r=>{const visible={...r};delete visible.sourceDriverId;return (!q||JSON.stringify(visible).toLowerCase().includes(q.toLowerCase()))&&grouping.matches(r,window)&&(!area||grouping.areas(r).districts.includes(area))&&(!vehicleType||r.vehicleType===vehicleType);}).map(r=>({routeCode:r.routeCode,vehicleType:r.vehicleType,boxType:r.boxType,timeWindow:r.timeWindow,window:grouping.timeWindow(r.timeWindow),areas:grouping.areas(r),stopCount:r.stops.length,firstStop:r.stops[0]?.name||'',lastStop:r.stops.at(-1)?.name||'',blocked:r.problems.length>0})).sort((a,b)=>a.routeCode.localeCompare(b.routeCode,'en',{numeric:true}));
  res.json({batchId:batch?.id||null,routes,timeGroups:grouping.groups(batch?.records||[])});
  }catch(e){next(e);}});
 router.get('/:kind',async(req,res,next)=>{try{
@@ -22,7 +23,7 @@ router.get('/:kind',async(req,res,next)=>{try{
  const batch=await latest(rawPool,req.params.kind);if(!batch)return res.json({batchId:null,total:0,records:[],issues:[]});
  const q=String(req.query.q||'').trim().slice(0,100),page=Number(req.query.page||1);
  if(!Number.isInteger(page)||page<1||page>10000)return res.status(400).json({error:'頁碼無效'});
- const visible=batch.records.map(r=>{const copy={...r};if(['NB','FN','WB'].includes(req.params.kind))delete copy.sourceDriverId;return copy;});
+ const visible=batch.records.map(r=>{const copy={...r};if(req.params.kind==='drivers'){const reminder=require('../../public/licenseReminders').classify(r.license);copy.licenseReminder=r.license?reminder.status:r.licenseProvided===true?'待核對':r.licenseProvided===false?'未提供':'未提供／待核對';copy.licenseRemindOn=reminder.remindOn;copy.licenseDays=reminder.days;}if(['NB','FN','WB'].includes(req.params.kind))delete copy.sourceDriverId;return copy;});
  const area=String(req.query.area||'').slice(0,60),vehicleType=String(req.query.vehicleType||'').slice(0,60);
  const records=visible.filter(r=>(!q||JSON.stringify(r).toLowerCase().includes(q.toLowerCase()))&&(!area||grouping.areas(r).districts.includes(area))&&(!vehicleType||r.vehicleType===vehicleType)&&grouping.matches(r,window)&&warehouses.matches(r,warehouse));
  res.json({batchId:batch.id,total:records.length,catalogTotal:batch.records.length,warehouseGroups:req.params.kind==='drivers'?warehouses.groups(batch.records):undefined,page,records:records.slice((page-1)*50,page*50),issues:batch.issues,updatedAt:batch.created_at,blocked:batch.records.filter(r=>r.problems.length).length});

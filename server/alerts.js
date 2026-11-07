@@ -3,9 +3,9 @@ const { daysUntil } = require("./dates");
 
 const WARN_DAYS = 30; // 到期前幾天開始提醒
 
-function toAlert({ type, label, dueDate, refId, refLabel }) {
-  const days = daysUntil(dueDate);
-  if (days === null || days > WARN_DAYS) return null;
+function toAlert({ type, label, dueDate, refId, refLabel, licenseReminder }) {
+  const days = licenseReminder ? licenseReminder.days : daysUntil(dueDate);
+  if (days === null || (licenseReminder ? licenseReminder.status === '正常' : days > WARN_DAYS)) return null;
   return {
     type,
     label,
@@ -37,6 +37,7 @@ async function computeAlerts() {
   for (const d of drivers.rows) {
     const a = toAlert({
       type: "driver_license",
+      licenseReminder: require("../public/licenseReminders").classify(d.license),
       label: `司機「${d.name}」證照`,
       dueDate: d.license,
       refId: d.id,

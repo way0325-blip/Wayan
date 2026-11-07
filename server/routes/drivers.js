@@ -17,7 +17,7 @@ const createSchema = {
 router.get("/", async (req, res, next) => {
   try {
     const { rows } = await pool.query("SELECT * FROM drivers ORDER BY id");
-    res.json(rows);
+    res.json(rows.map(r=>({...r,licenseReminder:require('../../public/licenseReminders').classify(r.license)})));
   } catch (err) {
     next(err);
   }

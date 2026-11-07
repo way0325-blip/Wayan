@@ -46,7 +46,7 @@ function parse(kind,rows){
   if(kind==='drivers'){
    if(row.sourceRow===2||c[2]==='蝦小編')continue;
    const license=c[6].replace(/\//g,'-');
-   record={key:c[10]||`ROW-${row.sourceRow}`,name:c[2],externalDriverId:c[10],employeeId:c[11],phone:c[7],vehicleType:c[3],licenseType:c[5],license:isValidDateKey(license)?license:'',warehouse:c[8],sourceStatus:c[9],safetySubmitted:c[14],sourceRow:row.sourceRow,problems:[]};
+   record={key:c[10]||`ROW-${row.sourceRow}`,name:c[2],externalDriverId:c[10],employeeId:c[11],phone:c[7],vehicleType:c[3],licenseType:c[5],license:isValidDateKey(license)?license:'',licenseProvided:Boolean(c[6]),warehouse:c[8],sourceStatus:c[9],safetySubmitted:c[14],sourceRow:row.sourceRow,problems:[]};
    if(!record.name||!record.externalDriverId)record.problems.push('缺少姓名或司機編號');
    if(!record.license)record.problems.push('證照期限待核對');
   }else if(kind==='parking'){

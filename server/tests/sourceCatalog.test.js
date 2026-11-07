@@ -117,3 +117,5 @@ test('selected-task LINE batch notification is atomic and requires current versi
  assert.equal((await send([{tripId:t.id,version},{tripId:'99999999',version}])).status,404);assert.equal((await pool.query("SELECT count(*)::int n FROM fleet_delivery_jobs WHERE payload->>'tripId'=$1",[String(t.id)])).rows[0].n,0);
  assert.equal((await send([{tripId:t.id,version:'stale'}])).status,409);assert.equal((await send([{tripId:t.id,version}])).data.queued,1);assert.equal((await send([{tripId:t.id,version}])).data.duplicate,1);
 });
+
+test('bulk route options honor all visible filters before pagination and driver reminder fields are computed',async()=>{const r=await api('GET','/NB/options?window=20%3A00&vehicleType=6.2T&area='+encodeURIComponent('桃園市大園區'));assert.equal(r.status,200);assert.equal(r.data.routes.length,20);assert.equal((await api('GET','/NB/options?q=NONEXISTENT')).data.routes.length,0);const d=await api('GET','/drivers');assert.ok(d.data.records.every(r=>typeof r.licenseReminder==='string'&&'licenseRemindOn' in r&&'licenseDays' in r));});
