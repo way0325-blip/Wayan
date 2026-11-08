@@ -6,6 +6,7 @@ const {taskNumber}=require('./fleetOperations');
 const error=code=>Object.assign(new Error(code),{code});
 async function deliverLine(job){
   if(!isConfigured()) throw error('LINE_NOT_CONFIGURED');
+  if(job.payload.type==='deliverySummary')return require('./deliverySummary').deliver(job);
   if(job.payload.type==='delivery')return require('./deliveryLine').deliver(job);
   if(job.payload.type==='shopee')return deliverShopeeLine(job);
   const task=(await pool.query(`SELECT t.*,f.name AS fleet_name,f.status AS fleet_status,g.group_id
@@ -45,7 +46,7 @@ async function runJobs(options={}){
       await pool.query(`UPDATE fleet_delivery_jobs SET status=CASE WHEN revision=claimed_revision THEN 'sent' ELSE 'pending' END,
         next_attempt_at=NOW(),locked_until=NULL,error_code=NULL,updated_at=NOW() WHERE id=$1 AND claimed_revision=$2 AND status='processing'`,[job.id,job.claimed_revision]);
       results.push({id:job.id,status:'sent'});
-      if(job.payload.type==='delivery')console.log('DELIVERY_LINE_JOB',JSON.stringify({tripId:job.payload.tripId,jobId:job.id,status:'sent'}));
+      if(['delivery','deliverySummary'].includes(job.payload.type))console.log('DELIVERY_LINE_JOB',JSON.stringify({tripId:job.payload.tripId,jobId:job.id,status:'sent'}));
     }catch(err){
       const code=/^[A-Z_]+$/.test(err.code||'')?err.code:'DELIVERY_FAILED';
       const blocked=['GOOGLE_NOT_CONFIGURED','LINE_NOT_CONFIGURED'].includes(code);
@@ -53,7 +54,7 @@ async function runJobs(options={}){
       await pool.query(`UPDATE fleet_delivery_jobs SET status=$2,attempts=CASE WHEN $3 THEN attempts-1 WHEN $4 THEN 5 ELSE attempts END,
         next_attempt_at=NOW()+INTERVAL '60 seconds',locked_until=NULL,error_code=$5,updated_at=NOW() WHERE id=$1 AND claimed_revision=$6 AND status='processing'`,[job.id,blocked?'blocked':'failed',blocked,permanent,code,job.claimed_revision]);
       results.push({id:job.id,status:blocked?'blocked':'failed',error:code});
-      if(job.payload.type==='delivery')console.log('DELIVERY_LINE_JOB',JSON.stringify({tripId:job.payload.tripId,jobId:job.id,status:blocked?'blocked':'failed',error:code}));
+      if(['delivery','deliverySummary'].includes(job.payload.type))console.log('DELIVERY_LINE_JOB',JSON.stringify({tripId:job.payload.tripId,jobId:job.id,status:blocked?'blocked':'failed',error:code}));
     }
   }
   return results;
