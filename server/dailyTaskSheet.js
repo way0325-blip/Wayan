@@ -13,7 +13,7 @@ async function read(url,env=process.env,fetcher=fetch){
  const get=async suffix=>{const r=await fetcher('https://sheets.googleapis.com/v4/spreadsheets/'+match[1]+suffix,{signal:AbortSignal.timeout(15000),headers:{Authorization:'Bearer '+token}});if(!r.ok)throw new Error('無法讀取每日任務試算表，請確認檢視者授權');return r.json();};
  const meta=await get('?fields=sheets.properties'),sheet=meta.sheets?.find(s=>String(s.properties.sheetId)===gid)?.properties;if(!sheet)throw new Error('找不到指定分頁');
  const title="'"+sheet.title.replace(/'/g,"''")+"'",data=await get('/values/'+encodeURIComponent(title+'!A1:E102')+'?valueRenderOption=FORMATTED_VALUE'),values=data.values||[];
- const keys=['serviceDate','routeCode','pickupPointId','departureTime','quantity'];if(keys.some((k,i)=>values[0]?.[i]!==k))throw new Error('A至E欄標題須為serviceDate,routeCode,pickupPointId,departureTime,quantity');
+ const keys=['serviceDate','routeCode','pickupPointId','departureTime'];if(keys.some((k,i)=>values[0]?.[i]!==k))throw new Error('A至D欄標題須為serviceDate,routeCode,pickupPointId,departureTime');
  if(values.length>101)throw new Error('每日匯入最多100條路線，請拆分分頁');
  return values.slice(1).filter(r=>r.some(v=>String(v).trim())).map(row=>Object.fromEntries(keys.map((k,i)=>[k,row[i]??''])));
 }
