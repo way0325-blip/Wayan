@@ -16,7 +16,8 @@ const HEADERS={drivers:{2:'中文姓名',3:'車輛類型',5:'駕照類型',6:'�
 const hash=v=>crypto.createHash('sha256').update(JSON.stringify(v)).digest('hex');
 const text=v=>v==null?'':String(v).trim();
 const plate=v=>text(v).toUpperCase().replace(/[\s-]/g,'');
-function location(address){const city=normalizeCity(address.slice(0,3));return {city,district:REGIONS[city]?.find(d=>address.startsWith(address.slice(0,3)+d))||''};}
+function location(address){const raw=String(address||'').normalize('NFKC').trim().replace(/^\d{3,6}\s*/,'');const city=normalizeCity(raw.slice(0,3));return {city,district:REGIONS[city]?.find(d=>raw.startsWith(raw.slice(0,3)+d))||''};}
+function projectRegions(batch){if(!batch||!['NB','FN','WB'].includes(batch.kind))return batch;return {...batch,records:batch.records.map(r=>{const problems=r.problems.filter(p=>!/^第\d+列(?:不在新竹以北配送範圍或地址待核對|地址行政區待核對)$/.test(p)),stops=r.stops.map(stop=>{const loc=location(stop.address);if(!loc.district)problems.push('第'+stop.sourceRow+'列地址行政區待核對');return {...stop,...loc};});return {...r,stops,problems};})};}
 function parse(kind,rows){
  const spec=SPECS[kind];if(!spec||!Array.isArray(rows)||rows.length>4000)throw new Error('來源種類或筆數無效');
  const issues=[],records=[],keys=new Map();let current,previousRow=1;
@@ -38,7 +39,7 @@ function parse(kind,rows){
    const sequence=Number(c[6]);
    if(!/^\d+$/.test(c[6])||sequence<1||sequence>200||!c[7]||!c[8]){current.problems.push(`第${row.sourceRow}列缺少有效順序、門市或地址`);continue;}
    const loc=location(c[8]);
-   if(!loc.district)current.problems.push(`第${row.sourceRow}列不在新竹以北配送範圍或地址待核對`);
+   if(!loc.district)current.problems.push(`第${row.sourceRow}列地址行政區待核對`);
    current.stops.push({sequence,name:c[7],address:c[8],...loc,note:c[9],sourceRow:row.sourceRow});
    continue;
   }
@@ -100,4 +101,4 @@ async function readSource(kind,env=process.env,fetcher=fetch){
  for(let index=0;index<spec.columns.length;index++)for(let i=1;i<(result.valueRanges?.[index]?.values?.length||0);i++){rows[i]??={sourceRow:i+1,cells:{}};rows[i].cells[spec.columns[index]]=result.valueRanges[index].values[i]?.[0]??'';}
  return rows.filter(Boolean);
 }
-module.exports={SOURCE_ID,SPECS,parse,readSource,hash,plate};
+module.exports={projectRegions,SOURCE_ID,SPECS,parse,readSource,hash,plate};

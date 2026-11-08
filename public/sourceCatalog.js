@@ -97,7 +97,7 @@
  }
 
  async function build(kind,index){
-  const data=states.get(kind).data,route=data?.records[index];if(!route)throw Error('路線已變更，請重新載入');if(route.problems.length)throw Error('所選路線仍有待核對問題，請先核對完整停靠站及配送範圍。');
+  const data=states.get(kind).data,route=data?.records[index];if(!route)throw Error('路線已變更，請重新載入');if(route.problems.length)throw Error('所選路線仍有待核對問題，請先核對完整停靠站及地址。');
   let ordered=route.stops.slice();
   const config=await api('/api/store-delivery/config');
   el('sourceBuildModal')?.remove();
