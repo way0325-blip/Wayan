@@ -9,7 +9,7 @@ function format(t,stops,n,max=Infinity,options={}){
  const routes=[...new Set(stops.map(s=>String(s.route_code||'').trim().toUpperCase()))];
  // The dated task code stays unambiguous when a route has several trips.
  const routeLabel=routes.length===1&&routes[0]?'路線編號：'+routes[0]+'\n':'';
- const header=`${(t.is_simulated||String(t.note||'').startsWith('[模擬]'))?'【模擬資料，不可實際派送】\n':''}【蝦皮店到店 ${heading(t)}】\n${t.service_date} ${t.departure_time}｜${t.warehouse_name}${t.pickup_point_name?'／'+t.pickup_point_name+'（'+t.box_type+'）':''}\n${t.warehouse_address||'取貨倉地址待調度確認'}\n狀態：${t.status}\n需求 ${t.required_checkins}／已報到 ${n}／尚缺 ${Math.max(0,t.required_checkins-n)}\n`;
+ const header=`${(t.is_simulated||String(t.note||'').startsWith('[模擬]'))?'【模擬資料，不可實際派送】\n':''}【蝦皮店到店 ${heading(t)}】\n${t.service_date} ${t.departure_time}｜${t.warehouse_name}${t.pickup_point_name?'／'+t.pickup_point_name+'（'+t.box_type+'）':''}\n${t.warehouse_address||'取貨倉地址待調度確認'}\n${options.reveal?'總店數：'+new Set(stops.map(s=>s.store_code||(s.store_name+'|'+s.address))).size+'｜停靠項目：'+stops.length+'\n':''}狀態：${t.status}\n需求 ${t.required_checkins}／已報到 ${n}／尚缺 ${Math.max(0,t.required_checkins-n)}\n`;
  const footer=`\n報到：車趟報到 ${t.checkin_code||t.task_code}\n查詢：車趟狀態 ${t.checkin_code||t.task_code}\n同一LINE帳號每個車趟僅計一次。\n異常：車趟異常 ${t.checkin_code||t.task_code} 延誤 說明內容`;
  let body='';for(const s of stops){const line=`${s.stop_no}. ${s.route_code?'['+s.route_code+'] ':''}${s.store_code} ${s.store_name}｜${s.city}${s.district} ${s.address}\n`;if(header.length+routeLabel.length+body.length+line.length+footer.length+50>max){body+='其餘停靠站請於平台查看或複製完整任務文字。\n';break;}body+=line;}
  return header+routeLabel+body+footer;
