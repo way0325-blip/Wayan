@@ -73,6 +73,7 @@ async function sheetRow(key,id){
   });
 }
 async function deliverSheet(payload){
+  if(payload.key==='attendance')return require('./attendanceSheets').deliver();
   if(['rosterDrivers','rosterVehicles'].includes(payload.key))return require('./rosterSheets').deliver(payload);
   if(payload.key==='fleets'&&(await pool.query('SELECT is_simulated FROM partner_fleets WHERE id=$1',[payload.id])).rows[0]?.is_simulated)throw error('SIMULATED_TASK_BLOCKED');
   const id=await targetId();if(!id || !credentialsReady()) throw error('GOOGLE_NOT_CONFIGURED');
