@@ -73,6 +73,7 @@ async function sheetRow(key,id){
   });
 }
 async function deliverSheet(payload){
+  if(['rosterDrivers','rosterVehicles'].includes(payload.key))return require('./rosterSheets').deliver(payload);
   if(payload.key==='fleets'&&(await pool.query('SELECT is_simulated FROM partner_fleets WHERE id=$1',[payload.id])).rows[0]?.is_simulated)throw error('SIMULATED_TASK_BLOCKED');
   const id=await targetId();if(!id || !credentialsReady()) throw error('GOOGLE_NOT_CONFIGURED');
   if(!/^[A-Za-z0-9_-]{10,200}$/.test(id)) throw error('GOOGLE_TARGET_INVALID');
@@ -112,4 +113,4 @@ async function deliverSheet(payload){
     {range:"'營運總覽'!C13",values:[['由 Wayan 自動同步；請依最後成功寫入時間確認資料新鮮度']]},
   ]})});
 }
-module.exports={deliverSheet,targetId,credentialsReady,rowValues,sheetRow};
+module.exports={deliverSheet,targetId,credentialsReady,rowValues,sheetRow,google,serial};
