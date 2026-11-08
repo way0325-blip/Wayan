@@ -6,7 +6,7 @@ const grouping=require('../../public/routeCatalogGroups');
 const warehouses=require('../../public/warehouseGroups');
 const router=express.Router();
 router.use(requireAuth,requireRole('admin','dispatcher'),(req,res,next)=>{res.set('Cache-Control','no-store');next();});
-const latest=async(db,kind)=>(await db.query('SELECT * FROM source_catalog_batches WHERE source_id=$1 AND kind=$2 ORDER BY id DESC LIMIT 1',[SOURCE_ID,kind])).rows[0];
+const latest=async(db,kind)=>require('../sourceCatalog').projectRegions((await db.query('SELECT * FROM source_catalog_batches WHERE source_id=$1 AND kind=$2 ORDER BY id DESC LIMIT 1',[SOURCE_ID,kind])).rows[0]);
 function changes(previous,next){const before=new Map((previous?.records||[]).map(r=>[r.key,hash(r)])),after=new Map(next.records.map(r=>[r.key,hash(r)]));return {added:[...after.keys()].filter(k=>!before.has(k)).length,changed:[...after.keys()].filter(k=>before.has(k)&&before.get(k)!==after.get(k)).length,absent:[...before.keys()].filter(k=>!after.has(k)).length};}
 router.get('/config',(req,res)=>res.json({sourceId:SOURCE_ID,specs:SPECS,serviceAccount:process.env.WAYAN_GOOGLE_CLIENT_EMAIL||'',notice:'來源名冊與自有派車資源分開，缺漏資料不自動補值。'}));
 router.get('/:kind/options',async(req,res,next)=>{try{

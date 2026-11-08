@@ -1,7 +1,7 @@
 const crypto=require('node:crypto');
 const {SOURCE_ID,hash}=require('./sourceCatalog');
 const {isValidDateKey}=require('./dates');
-const latest=async(db,kind)=>(await db.query('SELECT * FROM source_catalog_batches WHERE source_id=$1 AND kind=$2 ORDER BY id DESC LIMIT 1',[SOURCE_ID,kind])).rows[0];
+const latest=async(db,kind)=>require('./sourceCatalog').projectRegions((await db.query('SELECT * FROM source_catalog_batches WHERE source_id=$1 AND kind=$2 ORDER BY id DESC LIMIT 1',[SOURCE_ID,kind])).rows[0]);
 async function buildTrip(db,kind,b,actor,logAction){
 if(!['NB','FN','WB'].includes(kind)||!isValidDateKey(b.serviceDate)||b.verified!==true||typeof b.routeCode!=='string'||typeof b.pickupPointId!=='string')throw Object.assign(new Error('請核對門店、選有效日期、出發時間；固定路線以趟計價'),{status:400});
  await db.query('SELECT pg_advisory_xact_lock(870033)');
