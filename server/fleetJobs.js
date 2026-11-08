@@ -33,10 +33,10 @@ async function runJobs(options={}){
     const job=await transaction(pool,async db=>{
       const row=(await db.query(`SELECT * FROM fleet_delivery_jobs WHERE attempts<5 AND
         ((status IN ('pending','failed','blocked') AND next_attempt_at<=NOW()) OR (status='processing' AND locked_until<NOW()))
-        ORDER BY CASE WHEN kind='line' THEN 0 WHEN payload->>'key' IN ('incidents','history','routeCheckins','tripReturns','rosterDrivers','rosterVehicles') THEN 1 ELSE 2 END,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1`)).rows[0];
+        ORDER BY CASE WHEN kind='line' THEN 0 WHEN payload->>'key' IN ('incidents','history','routeCheckins','tripReturns','rosterDrivers','rosterVehicles','attendance') THEN 1 ELSE 2 END,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1`)).rows[0];
       if(!row) return null;
       return (await db.query(`UPDATE fleet_delivery_jobs SET status='processing',attempts=attempts+1,claimed_revision=revision,
-        locked_until=NOW()+CASE WHEN payload->>'key' IN ('rosterDrivers','rosterVehicles') THEN INTERVAL '180 seconds' ELSE INTERVAL '60 seconds' END,updated_at=NOW() WHERE id=$1 RETURNING *`,[row.id])).rows[0];
+        locked_until=NOW()+CASE WHEN payload->>'key' IN ('rosterDrivers','rosterVehicles','attendance') THEN INTERVAL '180 seconds' ELSE INTERVAL '60 seconds' END,updated_at=NOW() WHERE id=$1 RETURNING *`,[row.id])).rows[0];
     });
     if(!job) break;
     try{

@@ -151,7 +151,7 @@ async function start() {
   app.listen(PORT, () => {
     console.log(`港區星際運輸調度中心伺服器已啟動: http://localhost:${PORT}`);
     require('./sourceCatalogBootstrap').bootstrapSourceCatalog(require('./db').pool)
-      .then(async result=>{if(result.length)console.log('SOURCE_CATALOG_INITIAL_IMPORT',JSON.stringify(result));if(process.env.WAYAN_ENV==='staging'){await require('./rosterSheets').ensureInitial();require('./rosterSheets').startPolling();}})
+      .then(async result=>{if(result.length)console.log('SOURCE_CATALOG_INITIAL_IMPORT',JSON.stringify(result));if(process.env.WAYAN_ENV==='staging'){await require('./rosterSheets').ensureInitial();require('./rosterSheets').startPolling();await require('./fleetOperations').enqueueSheet(require('./db').pool,'attendance','current');require('./attendanceSheets').start();}})
       .catch(()=>console.error('SOURCE_CATALOG_INITIAL_IMPORT_FAILED'));
   });
 }

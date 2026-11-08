@@ -250,6 +250,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
 <link rel="stylesheet" href="/fleetChat.css?v=chat-1">
 <link rel="stylesheet" href="/workspace.css?v=1">
 <link rel="stylesheet" href="/fleetTasks.css?v=1">
+<link rel="stylesheet" href="/progressiveLayout.css?v=1">
 </head>
 
 <body>
@@ -881,7 +882,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
 <p id="opsCommand" style="white-space:pre-wrap"></p><form id="opsCheckinForm"><p id="opsFormError" class="opsFormError control-error" role="alert"></p><div class="form-grid"><div class="field"><label>目前累計報到總車數</label><input id="opsTotal" type="number" min="0" max="200000" step="1" required></div><div class="field"><label>補登／更正原因（必填）</label><input id="opsReportNote" maxlength="500" required></div></div><button class="primary" id="opsCheckinSave">登記累計總數</button></form><div id="opsCheckinRows" class="table-wrap"></div></div></div>
 
 <script src="/deliveryRouting.js?v=1"></script>
-<script src="/storeDelivery.js?v=fleet-detail-3"></script><script src="/deliveryDispatch.js?v=fleet-list-4"></script><script src="/fleets.js?v=fleet-line-workspace-1"></script><script src="/lineKeywords.js"></script><script src="/lineActivity.js?v=chat-1"></script>
+<script src="/storeDelivery.js?v=order-select-4"></script><script src="/deliveryDispatch.js?v=shared-selection-5"></script><script src="/fleets.js?v=fleet-line-workspace-1"></script><script src="/lineKeywords.js"></script><script src="/lineActivity.js?v=chat-1"></script>
 <script src="/operations.js"></script><script src="/penalties.js"></script>
 <script>
 const todayEl = document.getElementById("today");
@@ -1794,7 +1795,7 @@ function renderScheduleGrid() {
     <tbody>
       ${scheduleData.staff.map(s => `
       <tr>
-        <td style="position:sticky;left:0;background:var(--panel)">${escapeHTML(s.name)}</td>
+        <td style="position:sticky;left:0;background:var(--panel)">${escapeHTML(s.name)}<br><small class="hint">ID：${escapeHTML(s.id)}</small></td>
         ${days.map(d => {
           const st = statusOf(s.id, d);
           return `<td style="text-align:center;cursor:pointer;padding:6px" onclick="cycleAttendance('${s.id}', ${d})">${st ? ATT_BADGE[st] : "<span class='muted'>·</span>"}</td>`;
@@ -1804,24 +1805,28 @@ function renderScheduleGrid() {
   </table>`;
 }
 
+const attendancePending=new Set();
 async function cycleAttendance(staffId, day) {
+  const activeType=scheduleType,activeMonth=scheduleMonth,pendingKey=activeType+'|'+staffId+'|'+activeMonth+'|'+day;if(attendancePending.has(pendingKey))return;attendancePending.add(pendingKey);
   const date = `${scheduleMonth}-${String(day).padStart(2, "0")}`;
   const rec = scheduleData.records.find(r => r.staff_id === staffId && r.date === date);
   const current = rec ? rec.status : null;
   const next = ATT_STATUSES[(ATT_STATUSES.indexOf(current) + 1) % ATT_STATUSES.length];
 
   try {
-    await api("/api/attendance", {
+    const saved=await api("/api/attendance", {
       method: "PUT",
-      body: JSON.stringify({ staffType: scheduleType, staffId, date, status: next }),
+      body: JSON.stringify({ staffType: scheduleType, staffId, date, status: next, expectedVersion:scheduleData.versions?.find(r=>r.staff_id===staffId&&r.date===date)?.version||null }),
     });
+    if(activeType!==scheduleType||activeMonth!==scheduleMonth)return;
+    scheduleData.versions=(scheduleData.versions||[]).filter(r=>!(r.staff_id===staffId&&r.date===date));scheduleData.versions.push({staff_id:staffId,date,version:saved.version});
     if (rec) rec.status = next;
-    else if (next) scheduleData.records.push({ staff_id: staffId, date, status: next });
+    else if (next) scheduleData.records.push({ staff_id: staffId, date, status: next, expectedVersion:scheduleData.versions?.find(r=>r.staff_id===staffId&&r.date===date)?.version||null });
     if (!next) scheduleData.records = scheduleData.records.filter(r => !(r.staff_id === staffId && r.date === date));
     renderScheduleGrid();
   } catch (err) {
-    alert(err.message);
-  }
+    alert(err.message);await loadSchedule();
+  } finally {attendancePending.delete(pendingKey);}
 }
 
 function openDispatchStaffModal() {
@@ -2874,6 +2879,8 @@ loadPublicSettings();
 <script src="/dailyTasks.js?v=trip-based-2"></script>
 <script src="/driverRouteDesk.js?v=1"></script>
 <script src="/fleetTaskModel.js?v=visibility-2"></script>
-<script src="/fleetTasks.js?v=visibility-2"></script>
+<script src="/fleetTasks.js?v=simple-publish-3"></script>
+<script src="/attendanceSync.js?v=1"></script>
+<script src="/progressiveLayout.js?v=1"></script>
 </body>
 </html>
