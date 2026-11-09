@@ -67,6 +67,7 @@ app.use(
 
 app.use('/api/store-delivery',express.json({limit:'2mb'}));
 app.use('/api/source-catalog',express.json({limit:'3mb'}));
+app.use('/api/weekly-routes',express.json({limit:'3mb'}));
 app.use(express.json({ limit: "100kb" }));
 
 // 全站 API 速率限制,避免暴力嘗試或濫用
@@ -116,6 +117,7 @@ app.use('/api/penalty-cases',require('./routes/penaltyCases'));
 app.use('/api/store-delivery',require('./routes/storeDelivery'));
 app.use('/api/shopee-live',require('./routes/shopeeLive'));
 app.use('/api/source-catalog',require('./routes/sourceCatalog'));
+app.use('/api/weekly-routes',require('./routes/weeklyRoutes'));
 app.use('/api/driver-routes',require('./routes/driverRoutes'));
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));

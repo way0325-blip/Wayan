@@ -22,7 +22,7 @@ test('incremental migration can run twice without losing operational data',async
   await migrate(pool);await migrate(pool);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM orders')).rows[0].n,before);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM schema_migrations')).rows[0].n,require('node:fs').readdirSync(require('node:path').join(__dirname,'../migrations')).filter(name=>name.endsWith('.sql')).length);
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM delivery_pickup_points')).rows[0].n,5);
+  assert.deepEqual((await pool.query('SELECT id FROM delivery_pickup_points ORDER BY id')).rows.map(r=>r.id),['CHANGRONG','DAYUAN_SITE','GUOJI','RENMEI','SHUIYUAN','WEISHI']);
 });
 test('summary requires authentication and validates calendar dates',async()=>{
   assert.equal((await api('GET','/api/control/summary',undefined,null)).status,401);
