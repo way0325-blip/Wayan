@@ -31,3 +31,5 @@ CREATE TABLE dispatch_source_trip_links (
 ALTER TABLE delivery_trips ADD COLUMN dock_code TEXT NOT NULL DEFAULT '', ADD COLUMN source_fleet_name TEXT NOT NULL DEFAULT '', ADD COLUMN source_period_name TEXT NOT NULL DEFAULT '';
 INSERT INTO delivery_warehouses(id,name) VALUES('INTERNATIONAL_DOCK','國際倉') ON CONFLICT DO NOTHING;
 INSERT INTO delivery_pickup_points(id,warehouse_id,name,box_type) VALUES('GUOJI','INTERNATIONAL_DOCK','國際倉','橘箱') ON CONFLICT DO NOTHING;
+CREATE TRIGGER wayan_change AFTER INSERT OR UPDATE OR DELETE ON dispatch_source_batches FOR EACH STATEMENT EXECUTE FUNCTION wayan_notify_change();
+CREATE TRIGGER wayan_change AFTER INSERT OR UPDATE OR DELETE ON dispatch_source_fleet_aliases FOR EACH STATEMENT EXECUTE FUNCTION wayan_notify_change();
