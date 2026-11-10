@@ -26,3 +26,10 @@ test('explicit row dates are checked against period and filter applicable daily 
  test('mapping accepts arbitrary route families for regional lookup without changing codes',()=>{
  const result=require('../weeklyRoutes').parse({kind:'mapping',sheetName:'路線&車行',rows:[{sourceRow:2,route:'SER-01-104-1',fleet:'測試'},{sourceRow:3,route:'FBS-03-281',fleet:'測試'},{sourceRow:4,route:'WWSER-02-100-1',fleet:'測試'}]});assert.equal(result.records.length,3);assert.deepEqual(result.records.map(r=>r.region),['雙北','桃園','桃園']);assert.equal(result.records[0].routeCode,'SER-01-104-1');
  });
+
+ test('integrated carrier directory is read-only, counts distinct routes and keeps explicit fleet aliases',async()=>{
+ const body={...mapping,rows:[{sourceRow:2,route:'NB-DIR-1',fleet:'測試車行'},{sourceRow:3,route:'NB-DIR-1',fleet:'測試車行'},{sourceRow:4,route:'FN-DIR-2',fleet:'測試車行'},{sourceRow:5,route:'WB-DIR-3',fleet:''}]};await imported(body);
+ assert.equal((await api('GET','/directory',undefined,'')).status,401);const before=(await pool.query('SELECT count(*)::int n FROM audit_logs')).rows[0].n;
+ const result=await api('GET','/directory',undefined,dispatcher);assert.equal(result.status,200);assert.equal(result.data.records.length,2);const row=result.data.records.find(r=>r.sourceName==='測試車行');assert.equal(row.routeCount,2);assert.equal(row.pendingRows,2);assert.deepEqual(row.routeCodes,['NB-DIR-1','FN-DIR-2']);assert.equal(result.data.records.find(r=>r.sourceName==='').pendingRows,1);
+ const alias=(await pool.query('SELECT a.fleet_id,f.name FROM dispatch_source_fleet_aliases a JOIN partner_fleets f ON f.id=a.fleet_id WHERE a.source_name=$1',['測試車行'])).rows[0];assert.equal(row.fleetId,alias?.fleet_id||'');assert.equal(row.fleetName,alias?.name||'');assert.equal((await pool.query('SELECT count(*)::int n FROM audit_logs')).rows[0].n,before);
+ });
