@@ -7,7 +7,7 @@ const clean=v=>typeof v==='string'?v.trim():'';
 const uuid=v=>/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(v||'');
 const tripVersion="to_char(t.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')";
 async function board(db,day,fleet=''){
- const trips=(await db.query(`SELECT t.*,(SELECT alias FROM delivery_checkin_aliases WHERE trip_id=t.id) AS checkin_code,${tripVersion} AS dispatch_version,w.name AS warehouse_name,f.name AS fleet_name,d.name AS driver_name,v.plate,g.group_id,r.label AS group_name,
+ let trips=(await db.query(`SELECT t.*,(SELECT alias FROM delivery_checkin_aliases WHERE trip_id=t.id) AS checkin_code,${tripVersion} AS dispatch_version,w.name AS warehouse_name,f.name AS fleet_name,d.name AS driver_name,v.plate,g.group_id,r.label AS group_name,
  (SELECT count(*)::int FROM delivery_active_checkins c WHERE c.trip_id=t.id) AS checked_in,
  (SELECT count(*)::int FROM delivery_trip_stops s WHERE s.trip_id=t.id AND s.released_at IS NULL) AS order_count,
  (SELECT count(DISTINCT COALESCE(NULLIF(trim(s.store_code),''),s.store_name||'|'||s.address))::int FROM delivery_trip_stops s WHERE s.trip_id=t.id AND s.released_at IS NULL) AS store_count,
@@ -15,6 +15,7 @@ async function board(db,day,fleet=''){
    (SELECT CASE WHEN count(*)>0 AND bool_and(COALESCE(trim(s.route_code),'')<>'') AND count(DISTINCT upper(trim(s.route_code)))=1 THEN min(upper(trim(s.route_code))) ELSE NULL END FROM delivery_trip_stops s WHERE s.trip_id=t.id AND s.released_at IS NULL) AS report_route_code
  FROM delivery_trips t JOIN delivery_warehouses w ON w.id=t.warehouse_id LEFT JOIN partner_fleets f ON f.id=t.fleet_id LEFT JOIN drivers d ON d.id=t.driver_id LEFT JOIN vehicles v ON v.id=t.vehicle_id LEFT JOIN line_fleet_groups g ON g.fleet_id=t.fleet_id LEFT JOIN line_group_registry r ON r.group_id=g.group_id
  WHERE t.service_date=$1 AND ($2='' OR t.fleet_id=$2) ORDER BY t.demand_route_id,t.task_code LIMIT 1000`,[day,fleet])).rows;
+ trips=await require('./routeCarriers').attachTrips(db,trips);
  const routes=(await db.query(`SELECT r.* FROM shopee_routes r WHERE r.service_date=$1 ORDER BY r.destination LIMIT 1000`,[day])).rows;
  return {date:day,trips,routes:routes.map(r=>{const list=trips.filter(t=>t.demand_route_id===r.id&&t.status!=='已取消');return {...r,visible_trips:list.length,assigned:list.filter(t=>t.fleet_id||t.driver_id).length,own:list.filter(t=>t.driver_id&&!t.fleet_id).length,reported:list.reduce((n,t)=>n+t.checked_in,0)};}),truncated:trips.length===1000};
 }
