@@ -12,7 +12,7 @@
 POST /api/shopee/routes、PATCH /api/shopee/routes/:id、POST /api/shopee/routes/import 的每列支援 demandCategory；GET 回傳 demandCategory。CSV 新增選填「需求分類」，舊範本仍相容。半形周六／周日括號正規化為全形。
 
 ## 驗證
-lint 143 通過；本機獨立可丟棄 staging DB 整合測試 19 成功、0 失敗。未傳送 LINE，未修改來源 Sheets 或正式環境。
+lint 143 通過；本機獨立可丟棄 staging DB 整合測試 19 成功、0 失敗；介面分類篩選與統計 6 成功、0 失敗。GitHub CI 42734899991 通過。未傳送 LINE，未修改來源 Sheets 或正式環境。
 
 ## 限制與風險
 本次為需求分類，不是自動匯入來源表的資料列，也不是自動週末排程。來源表連接器無讀取權限；以使用者確認名稱為準。部署 migration 後才可使用新 API；需另行完成雲端版本及瀏覽器驗收，不能宣稱雲端已更新。

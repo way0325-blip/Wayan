@@ -213,11 +213,11 @@ router.patch("/routes/:id", async (req, res, next) => {
       value.destination !== current.destination ||
       value.vehicleType !== current.vehicle_type ||
       value.demandCategory !== current.demand_category;
-    const planned=Number((await pool.query("SELECT count(*) n FROM delivery_trips WHERE demand_route_id=$1 AND status<>'已取消'",[current.id])).rows[0].n);if(planned&&(identityChanged||value.requiredTrucks<planned))return res.status(409).json({error:'已有連結車趟，不可改日期路線或將需求降至已建立車趟數以下'});
+    const planned=Number((await pool.query("SELECT count(*) n FROM delivery_trips WHERE demand_route_id=$1 AND status<>'已取消'",[current.id])).rows[0].n);if(planned&&(identityChanged||value.requiredTrucks<planned))return res.status(409).json({error:'已有連結車趟，不可改日期、路線、需求分類或將需求降至已建立車趟數以下'});
     if (identityChanged) {
       const has = await pool.query("SELECT 1 FROM shopee_assignments WHERE route_id = $1 LIMIT 1", [current.id]);
       if (has.rows.length) {
-        return res.status(409).json({ error: "此需求已有車隊分派,不能修改日期、路線或車型;請先移除分派,或只修改車數與備註" });
+        return res.status(409).json({ error: "此需求已有車隊分派,不能修改日期、路線、車型或需求分類;請先移除分派,或只修改車數與備註" });
       }
     }
 
@@ -516,7 +516,6 @@ function serializeFleet(row, routes) {
     dailyCapacity: row.daily_capacity,
     status: row.status,
     note: row.note,
-    demandCategory: row.demand_category || "",
     routes: routes.map((r) => ({
       id: r.id,
       origin: r.origin,
