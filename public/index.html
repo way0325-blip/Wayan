@@ -503,6 +503,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
             <button class="action secondary" onclick="openShopeeImportModal()">📥 匯入 CSV</button>
             <button class="action secondary" onclick="loadShopeeRoutes()">🔄 重新整理</button>
           </div>
+          <label>需求分類 <select id="shopeeCategoryFilter" onchange="renderShopeeRoutes()"><option value="all">全部分類</option><option value="">未分類</option><option>上收</option><option>上收（周六）</option><option>上收（周日）</option></select></label>
           <div id="shopeeRouteTable" class="table-wrap"></div>
         </div>
       </div>
@@ -698,6 +699,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
     <div id="shopeeRouteError" class="alert hidden"></div>
     <form id="shopeeRouteForm">
       <input id="shopeeRouteEditId" type="hidden">
+      <div class="field"><label for="shopeeRouteCategory">需求分類</label><select id="shopeeRouteCategory"><option value="">未分類</option><option>上收</option><option>上收（周六）</option><option>上收（周日）</option></select></div>
       <div class="form-grid">
         <div class="field"><label>日期</label><input id="shopeeRouteDate" type="date" required></div>
         <div class="field"><label>車型</label><select id="shopeeRouteType" required></select></div>
@@ -1889,7 +1891,8 @@ async function loadShopeeRoutes() {
 }
 
 function renderShopeeRoutes() {
-  const list = shopeeRoutesData;
+  const category = document.getElementById("shopeeCategoryFilter").value;
+  const list = shopeeRoutesData.filter(r => category === "all" || (r.demandCategory || "") === category);
   const required = list.reduce((n, r) => n + r.requiredTrucks, 0);
   const confirmed = list.reduce((n, r) => n + Math.min(r.confirmedTrucks, r.requiredTrucks), 0);
   document.getElementById("shopeeRouteCount").textContent = list.length;
@@ -1903,12 +1906,13 @@ function renderShopeeRoutes() {
 
   box.innerHTML = `
   <table>
-    <thead><tr>${showDate ? "<th>日期</th>" : ""}<th>路線</th><th>車型</th><th>需求</th><th>已確認</th><th>待回覆</th><th>缺口</th><th>狀態</th><th>操作</th></tr></thead>
+    <thead><tr>${showDate ? "<th>日期</th>" : ""}<th>路線</th><th>需求分類</th><th>車型</th><th>需求</th><th>已確認</th><th>待回覆</th><th>缺口</th><th>狀態</th><th>操作</th></tr></thead>
     <tbody>
       ${list.map(r => `
       <tr>
         ${showDate ? `<td>${r.serviceDate}</td>` : ""}
         <td><b>${escapeHTML(r.origin)} → ${escapeHTML(r.destination)}</b>${r.note ? `<div class="muted">${escapeHTML(r.note)}</div>` : ""}</td>
+        <td>${escapeHTML(r.demandCategory || "未分類")}</td>
         <td>${escapeHTML(r.vehicleType)}</td>
         <td>${r.requiredTrucks}</td>
         <td>${r.confirmedTrucks}</td>
@@ -1937,6 +1941,7 @@ function openShopeeRouteModal(routeId) {
   document.getElementById("shopeeRouteDest").value = r?.destination || "";
   document.getElementById("shopeeRouteTrucks").value = r?.requiredTrucks || "";
   document.getElementById("shopeeRouteNote").value = r?.note || "";
+  document.getElementById("shopeeRouteCategory").value = r?.demandCategory || "";
   // 已有車隊分派(已確認或待回覆)時,日期/路線/車型後端會鎖定,先在畫面上提示
   const locked = !!r && (r.confirmedTrucks > 0 || r.pendingTrucks > 0);
   document.getElementById("shopeeRouteLockHint").classList.toggle("hidden", !locked);
@@ -1957,7 +1962,7 @@ function openShopeeImportModal() {
 }
 
 function downloadShopeeTemplate() {
-  const csv = "\ufeff日期,起點,終點,車型,車數,備註\n" + `${localToday()},台北,桃園,3.5T,2,\n` + `${localToday()},桃園,新竹,11T,1,急件\n`;
+  const csv = "\ufeff日期,起點,終點,車型,車數,備註,需求分類\n" + `${localToday()},台北,桃園,3.5T,2,,上收\n` + `${localToday()},桃園,新竹,11T,1,急件,上收（周六）\n`;
   const link = document.createElement("a");
   link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   link.download = "蝦皮需求匯入範本.csv";
@@ -1978,7 +1983,7 @@ async function importShopeeRoutes() {
   if (table.length < 2) { out.innerHTML = `<div class="alert">檔案沒有資料列</div>`; return; }
 
   const map = { "日期": "serviceDate", "服務日期": "serviceDate", "起點": "origin", "終點": "destination",
-                "車型": "vehicleType", "車數": "requiredTrucks", "需求車數": "requiredTrucks", "需求": "requiredTrucks", "備註": "note" };
+                "車型": "vehicleType", "車數": "requiredTrucks", "需求車數": "requiredTrucks", "需求": "requiredTrucks", "需求分類": "demandCategory", "備註": "note" };
   const cols = table[0].map(h => map[h.trim()]);
   const missing = ["serviceDate", "origin", "destination", "vehicleType", "requiredTrucks"].filter(k => !cols.includes(k));
   if (missing.length) { out.innerHTML = `<div class="alert">缺少欄位,請確認表頭與範本一致(日期、起點、終點、車型、車數)</div>`; return; }
@@ -2727,6 +2732,7 @@ document.getElementById("shopeeRouteForm").addEventListener("submit", async e =>
     vehicleType: document.getElementById("shopeeRouteType").value,
     requiredTrucks: Number(document.getElementById("shopeeRouteTrucks").value),
     note: document.getElementById("shopeeRouteNote").value,
+    demandCategory: document.getElementById("shopeeRouteCategory").value,
   };
   try {
     await api(editId ? `/api/shopee/routes/${editId}` : "/api/shopee/routes", { method: editId ? "PATCH" : "POST", body: JSON.stringify(payload) });
