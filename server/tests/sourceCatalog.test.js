@@ -130,7 +130,7 @@ test('unrecognizable addresses and unrelated route problems stay blocked',()=>{c
  test('route carrier exact join is read-only, filters options and marks duplicates pending',async()=>{
  const saved=await save('NB',[row(2,{1:'NB-CARRIER-1',4:'20:00',6:'1',7:'測試門店',8:'桃園市大園區測試路1號'}),row(3,{1:'NB-CARRIER-10',4:'21:00',6:'1',7:'另一店',8:'桃園市觀音區測試路1號'})]);assert.equal(saved.status,201);
  const original=(await pool.query('SELECT records FROM source_catalog_batches WHERE id=$1',[saved.data.batchId])).rows[0].records;
- const insert=async records=>(await pool.query("INSERT INTO dispatch_source_batches(kind,source_id,sheet_name,digest,records,issues,created_by) VALUES('mapping',$1,'路線&車行',gen_random_uuid()::text,$2,'[]','test') RETURNING id",[require('../weeklyRoutes').SOURCES.mapping,JSON.stringify(records)])).rows[0].id;
+ const insert=async records=>(await pool.query("INSERT INTO dispatch_source_batches(kind,source_id,sheet_name,digest,records,issues,created_by) VALUES('mapping',$1,'路線&車行',gen_random_uuid()::text,$2,'[]','test') RETURNING id",[require('../carrierMappings').SOURCES.mapping,JSON.stringify(records)])).rows[0].id;
  const mapping=await insert([{routeCode:'NB-CARRIER-1',fleetName:'測試車行甲',problems:[]}]);
  const all=await api('GET','/NB');assert.equal(all.data.records[0].sourceFleetName,'測試車行甲');assert.equal(all.data.records[1].sourceFleetName,'');assert.equal(all.data.carrierMappingId,mapping);
  const filtered=await api('GET','/NB?carrier='+encodeURIComponent('測試車行甲'));assert.equal(filtered.data.total,1);assert.equal(filtered.data.records[0].routeCode,'NB-CARRIER-1');
