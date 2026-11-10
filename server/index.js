@@ -67,6 +67,7 @@ app.use(
 
 app.use('/api/store-delivery',express.json({limit:'2mb'}));
 app.use('/api/source-catalog',express.json({limit:'3mb'}));
+app.use('/api/pickup-routes',express.json({limit:'3mb'}));
 app.use('/api/weekly-routes',express.json({limit:'3mb'}));
 app.use(express.json({ limit: "100kb" }));
 
@@ -117,6 +118,7 @@ app.use('/api/penalty-cases',require('./routes/penaltyCases'));
 app.use('/api/store-delivery',require('./routes/storeDelivery'));
 app.use('/api/shopee-live',require('./routes/shopeeLive'));
 app.use('/api/source-catalog',require('./routes/sourceCatalog'));
+app.use('/api/pickup-routes',require('./routes/pickupRoutes'));
 app.use('/api/weekly-routes',require('./routes/weeklyRoutes'));
 app.use('/api/driver-routes',require('./routes/driverRoutes'));
 
