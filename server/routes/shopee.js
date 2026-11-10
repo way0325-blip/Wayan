@@ -80,6 +80,7 @@ function serializeRoute(row) {
     shortage,
     status: shortage === 0 ? "已補滿" : row.pending_trucks > 0 ? "待車隊回覆" : "待分派",
     note: row.note,
+    demandCategory: row.demand_category || "",
   };
 }
 
@@ -97,8 +98,10 @@ async function normalizeRouteInput(raw, types) {
     vehicleType: clean(raw.vehicleType),
     requiredTrucks: intInRange(raw.requiredTrucks, 1, MAX_TRUCKS),
     note: clean(raw.note),
+    demandCategory: clean(raw.demandCategory).replace(/\(周([六日])\)/g, "（周$1）"),
   };
   const problems = [];
+  if (!["", "上收", "上收（周六）", "上收（周日）"].includes(value.demandCategory)) problems.push("需求分類必須是上收、上收（周六）或上收（周日）");
   if (!validDate(value.serviceDate)) problems.push("日期格式需為 YYYY-MM-DD 且必須是存在的日期");
   if (!value.origin || value.origin.length > 50) problems.push("起點必填,且不可超過 50 字");
   if (!value.destination || value.destination.length > 50) problems.push("終點必填,且不可超過 50 字");
@@ -134,12 +137,12 @@ router.post("/routes", async (req, res, next) => {
 
     const id = "S" + Date.now();
     await pool.query(
-      `INSERT INTO shopee_routes (id, service_date, origin, destination, vehicle_type, required_trucks, note)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [id, value.serviceDate, value.origin, value.destination, value.vehicleType, value.requiredTrucks, value.note]
+      `INSERT INTO shopee_routes (id, service_date, origin, destination, vehicle_type, required_trucks, note, demand_category)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [id, value.serviceDate, value.origin, value.destination, value.vehicleType, value.requiredTrucks, value.note, value.demandCategory]
     );
 
-    await logAction(req, "新增", "蝦皮需求", id, `${value.serviceDate} ${value.origin}→${value.destination} ${value.vehicleType}×${value.requiredTrucks}`);
+    await logAction(req, "新增", "蝦皮需求", id, `${value.serviceDate} ${value.origin}→${value.destination} ${value.vehicleType}×${value.requiredTrucks} 分類:${value.demandCategory || "未分類"}`);
     res.status(201).json(await getRouteSummary(pool, id));
   } catch (err) {
     next(err);
@@ -170,9 +173,9 @@ router.post("/routes/import", async (req, res, next) => {
       for (let i = 0; i < parsed.length; i++) {
         const v = parsed[i];
         await client.query(
-          `INSERT INTO shopee_routes (id, service_date, origin, destination, vehicle_type, required_trucks, note)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [`S${base}${String(i).padStart(3, "0")}`, v.serviceDate, v.origin, v.destination, v.vehicleType, v.requiredTrucks, v.note]
+          `INSERT INTO shopee_routes (id, service_date, origin, destination, vehicle_type, required_trucks, note, demand_category)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [`S${base}${String(i).padStart(3, "0")}`, v.serviceDate, v.origin, v.destination, v.vehicleType, v.requiredTrucks, v.note, v.demandCategory]
         );
       }
     });
@@ -198,6 +201,7 @@ router.patch("/routes/:id", async (req, res, next) => {
       vehicleType: req.body?.vehicleType ?? current.vehicle_type,
       requiredTrucks: req.body?.requiredTrucks ?? current.required_trucks,
       note: req.body?.note ?? current.note,
+      demandCategory: req.body?.demandCategory ?? current.demand_category,
     };
     const { value, problems } = await normalizeRouteInput(merged, shopee_vehicle_types);
     if (problems.length) return res.status(400).json({ error: "輸入驗證失敗", details: problems });
@@ -207,12 +211,13 @@ router.patch("/routes/:id", async (req, res, next) => {
       value.serviceDate !== current.service_date ||
       value.origin !== current.origin ||
       value.destination !== current.destination ||
-      value.vehicleType !== current.vehicle_type;
-    const planned=Number((await pool.query("SELECT count(*) n FROM delivery_trips WHERE demand_route_id=$1 AND status<>'已取消'",[current.id])).rows[0].n);if(planned&&(identityChanged||value.requiredTrucks<planned))return res.status(409).json({error:'已有連結車趟，不可改日期路線或將需求降至已建立車趟數以下'});
+      value.vehicleType !== current.vehicle_type ||
+      value.demandCategory !== current.demand_category;
+    const planned=Number((await pool.query("SELECT count(*) n FROM delivery_trips WHERE demand_route_id=$1 AND status<>'已取消'",[current.id])).rows[0].n);if(planned&&(identityChanged||value.requiredTrucks<planned))return res.status(409).json({error:'已有連結車趟，不可改日期、路線、需求分類或將需求降至已建立車趟數以下'});
     if (identityChanged) {
       const has = await pool.query("SELECT 1 FROM shopee_assignments WHERE route_id = $1 LIMIT 1", [current.id]);
       if (has.rows.length) {
-        return res.status(409).json({ error: "此需求已有車隊分派,不能修改日期、路線或車型;請先移除分派,或只修改車數與備註" });
+        return res.status(409).json({ error: "此需求已有車隊分派,不能修改日期、路線、車型或需求分類;請先移除分派,或只修改車數與備註" });
       }
     }
 
@@ -220,11 +225,11 @@ router.patch("/routes/:id", async (req, res, next) => {
     if (value.requiredTrucks < confirmed) return res.status(409).json({error:'需求車數不可低於已確認車數，請先調整車隊承接'});
     await pool.query(
       `UPDATE shopee_routes SET service_date = $1, origin = $2, destination = $3, vehicle_type = $4,
-         required_trucks = $5, note = $6 WHERE id = $7`,
-      [value.serviceDate, value.origin, value.destination, value.vehicleType, value.requiredTrucks, value.note, current.id]
+         required_trucks = $5, note = $6, demand_category = $8 WHERE id = $7`,
+      [value.serviceDate, value.origin, value.destination, value.vehicleType, value.requiredTrucks, value.note, current.id, value.demandCategory]
     );
 
-    await logAction(req, "修改", "蝦皮需求", current.id, `${value.origin}→${value.destination} ${value.vehicleType}×${value.requiredTrucks}`);
+    await logAction(req, "修改", "蝦皮需求", current.id, `${value.origin}→${value.destination} ${value.vehicleType}×${value.requiredTrucks} 分類:${value.demandCategory || "未分類"}`);
     res.json(await getRouteSummary(pool, current.id));
   } catch (err) {
     next(err);
