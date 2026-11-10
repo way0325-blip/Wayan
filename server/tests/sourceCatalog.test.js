@@ -141,3 +141,25 @@ test('unrecognizable addresses and unrelated route problems stay blocked',()=>{c
  const duplicate=await api('GET','/NB');assert.equal(duplicate.data.records[0].sourceFleetName,'');assert.equal(duplicate.data.records[0].carrierMatch,'對照重複');
  assert.deepEqual((await pool.query('SELECT records FROM source_catalog_batches WHERE id=$1',[saved.data.batchId])).rows[0].records,original);
  });
+
+ test('route region uses only second segment, keeps raw values and every duplicate',()=>{
+ const region=require('../../public/routeRegions');for(const [code,name]of Object.entries(region.regions))assert.equal(region.classify('ANY-'+code+'-123').region,name);
+ for(const [code,name]of [['NJ-08-109-1','台中'],['FBS-03-281','桃園'],['SER-01-104-1','雙北'],['WWSER-02-100-1','桃園'],['','未填'],['BAD','待確認'],['NB-99-100','待確認'],['NB-1-100','待確認'],['NB－01－100','待確認']])assert.equal(region.classify(code).region,name);
+ const raw=[{routeCode:' SER-01-104-1 '},{routeCode:' SER-01-104-1 '}];assert.deepEqual(region.project(raw).map(r=>r.routeCode),raw.map(r=>r.routeCode));assert.equal(region.project(raw).length,2);
+ });
+ test('pickup categories preserve duplicates, blank routes, independent histories and stale version checks',async()=>{
+ const call=async(method,path,body,auth=token)=>{const r=await fetch(base+'/api/pickup-routes'+path,{method,headers:{'Content-Type':'application/json',...(auth?{Authorization:'Bearer '+auth}:{})},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,data:await r.json()};};
+ assert.equal((await call('GET','?category='+encodeURIComponent('上收'),undefined,'')).status,401);
+ const names=require('../pickupRoutes').names;
+ for(const [category,sourceName]of Object.entries(names)){
+ const rows=[{route:'SER-01-104-1'},{route:'SER-01-104-1'},{route:''},{route:'WWSER-99-100-1'}],body={category,sourceName,rows};
+ const p=await call('POST','/preview',body);assert.equal(p.status,200);assert.equal(p.data.records.length,4);assert.equal(p.data.pending,2);
+ const saved=await call('POST','/import',{...body,digest:p.data.digest,expectedBatchId:p.data.expectedBatchId,verified:true});assert.equal(saved.status,200,JSON.stringify(saved.data));
+ assert.equal((await call('POST','/import',{...body,digest:p.data.digest,expectedBatchId:p.data.expectedBatchId,verified:true})).data.duplicate,true);
+ const list=await call('GET','?category='+encodeURIComponent(category));assert.equal(list.data.sourceName,sourceName);assert.equal(list.data.records.length,4);assert.equal(list.data.records[0].region,'雙北');assert.equal(list.data.records[2].region,'未填');
+ const changed=await call('POST','/preview',{...body,rows:[{route:'WWSER-02-100-1'}]});assert.equal((await call('POST','/import',{category,sourceName,rows:[{route:'WWSER-02-100-1'}],digest:changed.data.digest,expectedBatchId:null,verified:true})).status,409);
+ assert.equal((await call('POST','/import',{...body,digest:'wrong',verified:true})).status,409);
+ }
+ assert.equal((await call('POST','/preview',{category:'未知',sourceName:'未知',rows:[{route:'X-01-1'}]})).status,400);
+ const parsed=require('../../public/weeklyRouteFormat').extract('pickup','路線編號,車行\nSER-01-104-1,甲\nSER-01-104-1,甲');assert.equal(parsed.length,2);assert.equal(require('../../public/weeklyRouteFormat').extract('pickup','路線編號\n SER-01-104-1 ')[0].route,' SER-01-104-1 ');
+ });
