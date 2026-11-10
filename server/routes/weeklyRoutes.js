@@ -2,6 +2,7 @@ const express=require('express'),{pool:rawPool}=require('../db'),{requireAuth,re
 const router=express.Router();router.use(requireAuth,requireRole('admin','dispatcher'),(req,res,next)=>{res.set('Cache-Control','no-store');next();});
 const {pool}=transactionalRouter(router,rawPool,870045);
 const wrap=fn=>async(req,res,next)=>{try{res.json(await fn(req));}catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e);}};
+router.get('/directory',wrap(()=>require('../shopeeDirectory').carriers(rawPool)));
 router.get('/catalog',wrap(req=>service.catalog(rawPool,req.query.date)));
 router.get('/status',wrap(async()=>({sources:service.SOURCES,batches:(await rawPool.query('SELECT id,kind,sheet_name,period_start,period_end,created_at,jsonb_array_length(records) AS route_count FROM dispatch_source_batches ORDER BY id DESC LIMIT 20')).rows})));
 router.post('/preview',requireRole('admin'),wrap(req=>service.preview(pool,req.body)));
