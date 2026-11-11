@@ -73,6 +73,7 @@ async function sheetRow(key,id){
   });
 }
 async function deliverSheet(payload){
+  if(payload.key==='routeBackoffice')return require('./routeSheets').sync();
   if(payload.key==='platformSnapshot')return require('./platformSheets').deliver();
   if(payload.key==='attendance')return require('./attendanceSheets').deliver();
   if(['rosterDrivers','rosterVehicles'].includes(payload.key))return require('./rosterSheets').deliver(payload);

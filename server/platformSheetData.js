@@ -51,5 +51,5 @@ async function collect(db){const result=[];for(const v of views){const fields=v.
  const trips=result.find(r=>r.name==='平台_派車任務'),projected=await require('./routeCarriers').attachTrips(db,trips.rows.map(r=>({id:r[0],source_fleet_name:r[12]})));trips.headers.push('目前核對來源車行','車行核對狀態','車行對照版本');trips.rows.forEach((r,i)=>r.push(projected[i].source_fleet_name,projected[i].source_carrier_status,cell(projected[i].source_carrier_mapping_id)));
  for(const v of result)if(v.rows.length>MAX_ROWS)throw Object.assign(new Error('PLATFORM_ROW_LIMIT'),{code:'PLATFORM_ROW_LIMIT'});if(result.reduce((n,v)=>n+(v.rows.length+1)*v.headers.length,0)>MAX_CELLS)throw Object.assign(new Error('PLATFORM_CELL_LIMIT'),{code:'PLATFORM_CELL_LIMIT'});return {datasets:result,digest:hash(result)};
 }
-const tables=new Set([...views.map(v=>v.table),'source_catalog_batches','pickup_route_batches','dispatch_source_batches','line_driver_bindings']);tables.delete('fleet_delivery_jobs');tables.delete('settings');
+const tables=new Set([...views.map(v=>v.table),'source_catalog_batches','pickup_route_batches','dispatch_source_batches','line_driver_bindings','route_overrides']);tables.delete('fleet_delivery_jobs');tables.delete('settings');
 module.exports={collect,views,cell,tables,MAX_ROWS};
