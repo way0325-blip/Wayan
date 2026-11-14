@@ -9,7 +9,7 @@
  nav.id='workspaceNavigation';const menu=document.createElement('button');menu.id='workspaceNavToggle';menu.type='button';menu.className='action secondary workspace-mobile-toggle';menu.textContent='更多功能';menu.setAttribute('aria-controls',nav.id);menu.setAttribute('aria-expanded','false');nav.querySelector('.brand').append(menu);menu.addEventListener('click',()=>{const open=nav.classList.toggle('workspace-menu-open');menu.setAttribute('aria-expanded',String(open));});
  const external=nav.querySelector('a.nav-btn');if(external){external.textContent='外部派工報板 ↗';external.title='開啟東岸聯興派工報板';nav.insertBefore(external,el('logoutBtn'));}
  const tools=document.createElement('details');tools.id='workspaceTools';tools.className='workspace-tools';const toolsHeading=document.createElement('summary');toolsHeading.className='nav-btn';toolsHeading.textContent='小工具';tools.append(toolsHeading);const toolsLinks=document.createElement('div');toolsLinks.className='workspace-tool-links';for(const [label,url]of [
- ['LINE 對話紀錄','https://chat.line.biz/Ubeb877f496d43d391d168010d5083f8e/chat/2C3433a9c83d44191182331bff36fe17e0?messageId=640597221255676008'],
+ ['路線簽收單分流工具','https://route-receipt-helper-1109.leisurelygate2.chatgpt.site/'],
  ['雙11路線核對','https://double11-route-check-2026.leisurelygate2.chatgpt.site/?v=20261112-r1'],
  ['路線車行查詢','https://route-carrier-lookup.leisurelygate2.chatgpt.site/']
  ]){const link=document.createElement('a');link.className='nav-btn';link.href=url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=label+' ↗';link.title=label+'（另開分頁）';toolsLinks.append(link);}tools.append(toolsLinks);nav.insertBefore(tools,el('logoutBtn'));
