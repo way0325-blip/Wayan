@@ -530,7 +530,7 @@ function serializeFleet(row, routes) {
 router.get("/fleets", async (req, res, next) => {
   try {
     const [fleets, routes] = await Promise.all([
-      pool.query("SELECT * FROM partner_fleets ORDER BY id"),
+      pool.query("SELECT * FROM partner_fleets WHERE NOT is_simulated AND note NOT LIKE '[模擬]%' ORDER BY id"),
       pool.query("SELECT * FROM fleet_routes ORDER BY origin, destination, vehicle_type"),
     ]);
     res.json(fleets.rows.map((f) => serializeFleet(f, routes.rows.filter((r) => r.fleet_id === f.id))));

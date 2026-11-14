@@ -4,8 +4,8 @@ async function attach(db,batch){
  if(!batch||!['NB','FN','WB'].includes(batch.kind))return batch;
  const mapping=(await db.query("SELECT id,records FROM dispatch_source_batches WHERE kind='mapping' AND source_id=$1 ORDER BY id DESC LIMIT 1",[SOURCES.mapping])).rows[0];
  const byCode=new Map();for(const row of mapping?.records||[]){const rows=byCode.get(row.routeCode)||[];rows.push(row);byCode.set(row.routeCode,rows);}
- const records=batch.records.map(route=>{const matches=byCode.get(route.routeCode)||[],one=matches.length===1?matches[0]:null,valid=!!one?.fleetName&&!one.problems?.length;
- return {...route,...require('../public/routeRegions').classify(route.routeCode),sourceFleetName:valid?one.fleetName:'',carrierMatch:valid?'已核對':matches.length>1?'對照重複':one?'車行待核對':'未對應',carrierMappingId:mapping?.id||null};});
+ const missingCodes=batch.records.filter(r=>!r.sourceOrigin&&!byCode.has(r.routeCode)).map(r=>r.routeCode),origins=new Map();if(missingCodes.length){const rows=(await db.query("SELECT r->>'routeCode' AS code,r->'sourceOrigin' AS origin FROM (SELECT DISTINCT ON(kind) records FROM source_catalog_batches WHERE source_id=$1 AND kind IN ('NB','FN','WB') ORDER BY kind,id DESC)b CROSS JOIN LATERAL jsonb_array_elements(b.records)r WHERE r->>'routeCode'=ANY($2::text[]) AND r ? 'sourceOrigin'",[require('./sourceCatalog').SOURCE_ID,missingCodes])).rows;for(const r of rows)origins.set(r.code,r.origin);}const records=batch.records.map(route=>{const matches=byCode.get(route.routeCode)||[],one=matches.length===1?matches[0]:null,valid=!!one?.fleetName&&!one.problems?.length;
+ return {...route,...require('../public/routeRegions').classify(route.routeCode),sourceFleetName:valid?one.fleetName:!matches.length?(route.sourceOrigin||origins.get(route.routeCode))?.fleet||'':'',carrierMatch:valid?'已核對':matches.length>1?'對照重複':one?'車行待核對':(route.sourceOrigin||origins.get(route.routeCode))?.fleet?'已核對':'未對應',carrierMappingId:mapping?.id||null};});
  return require('./routeOverrides').apply(db,{...batch,records,carrierMappingId:mapping?.id||null});
 }
 async function attachTrips(db,trips){
