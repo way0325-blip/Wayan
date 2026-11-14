@@ -3,7 +3,7 @@ const {isValidDateKey}=require('./dates');
 const reject=message=>{throw Object.assign(new Error(message),{status:400});};
 async function preview(db,rows){
  if(!Array.isArray(rows)||!rows.length||rows.length>200)reject('每日匯入限1～200條路線');
- const batches=new Map(),pickups=(await db.query('SELECT * FROM delivery_pickup_points')).rows,seen=new Set(),items=[];
+ const batches=new Map(),pickups=(await db.query('SELECT p.* FROM delivery_pickup_points p JOIN delivery_warehouses w ON w.id=p.warehouse_id WHERE p.active AND w.active')).rows,seen=new Set(),items=[];
  for(const [index,r]of rows.entries()){
   if(!r||typeof r!=='object')reject('第'+(index+1)+'列格式錯誤');
   const routeCode=String(r.routeCode||'').trim().toUpperCase(),kind=({N:'NB',F:'FN',W:'WB'})[routeCode[0]],serviceDate=String(r.serviceDate||''),pickupPointId=String(r.pickupPointId||'');
