@@ -1,5 +1,5 @@
 const {cycle}=require('./staffingModel'),{isValidDateKey}=require('./dates');
-const fail=message=>{throw Object.assign(new Error(message),{code:'STAFF_SOURCE_FORMAT'});};
+const fail=message=>{throw Object.assign(new Error(message),{code:'STAFF_SOURCE_FORMAT',status:400});};
 function parse(source,values,start){
  const c=cycle(start);if(!Array.isArray(values)||values.length>2000||values[6]?.[0]!=='路線編號'||values[6]?.[1]!=='類型')fail('來源欄位已變更');
  if(String(values[2]?.[0]||'').trim()!==source.fleet+' 司機回填表')fail('來源車行標題不符');

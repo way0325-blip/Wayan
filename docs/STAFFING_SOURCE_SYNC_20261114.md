@@ -13,3 +13,7 @@
 限制：未新增公司OAuth常駐權杖，不複製正式Secrets；無法讀取的表需擁有者授予平台服務帳戶檢視權限。同步時記錄的首次發現時間不是公司表實際填寫時間。介面確認為資料庫整合測試與DOM測試，手機實體驗收另行核對。
 
 變更檔案：server/migrations/024_staffing_sources.sql、server/staffingSources.js、server/staffingSourceModel.js、server/staffingSync.js、server/routes/weeklyStaffing.js、server/index.js、public/staffingSync.js、public/index.html、server/tests/staffing-source-model.test.js、server/tests/weekly-staffing.test.js、本文件。
+
+新增 POST /api/weekly-staffing/source-snapshot：只接受既有10份allowlist來源、明確verified及最多2000列×11欄的原始CSV矩陣；不接受任意URL。無法分享的檔案，可從公司檢視權限帳號下載目前分頁CSV後人工選來源更新。保留前7列標題與日期，來源標題/完整週期不符拒絕。
+
+驗證：新增5項純解析測試、8項同步整合測試；本機DOM 5成功0失敗。完整CI另核對結果。
