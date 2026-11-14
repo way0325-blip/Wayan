@@ -1,0 +1,42 @@
+const sources=require('./staffingSources'),model=require('./staffingSourceModel'),staff=require('./weeklyStaffing'),dates=require('./dates');
+const {pool}=require('./db'),{transaction,audit}=require('./transaction');
+let running=false;
+const safe=e=>/^[A-Z_]+$/.test(e.code||'')?e.code:'SOURCE_READ_FAILED';
+async function status(db,start){require('./staffingModel').cycle(start);const r=(await db.query('SELECT report,updated_at FROM staffing_sync_state WHERE cycle_start=$1',[start])).rows[0];return {running,intervalMinutes:5,automatic:process.env.WAYAN_ENV==='staging'&&require('./fleetSheets').credentialsReady(),...(r?.report||{start,sources:sources.map(s=>({fleet:s.fleet,state:'尚未更新'})),issues:[]})};}
+async function read(source,google){const metadata=await google(source.id+'?fields=sheets.properties');const sheet=metadata.sheets?.find(s=>s.properties.title==='司機回填表')?.properties;if(!sheet||sheet.gridProperties.columnCount<11||sheet.gridProperties.rowCount>2000)throw Object.assign(new Error('STAFF_SOURCE_FORMAT'),{code:'STAFF_SOURCE_FORMAT'});const r=await google(source.id+'/values/'+encodeURIComponent("'司機回填表'!A1:K"+sheet.gridProperties.rowCount)+'?valueRenderOption=FORMATTED_VALUE');return {values:r.values||[],sheetId:sheet.sheetId};}
+async function apply(db,start,inputs,actor){
+ const c=require('./staffingModel').cycle(start);await db.query('SELECT pg_advisory_xact_lock(870033)');await db.query('SELECT pg_advisory_xact_lock(870048)');
+ const prior=(await db.query('SELECT report FROM staffing_sync_state WHERE cycle_start=$1',[start])).rows[0]?.report;
+ const report={start,at:new Date().toISOString(),added:0,updated:0,unchanged:0,sources:[],issues:[]};let candidates=[];
+ for(const input of inputs){const old=prior?.sources?.find(s=>s.fleet===input.source.fleet);if(input.error){report.sources.push({fleet:input.source.fleet,state:'讀取失敗，保留既有資料',error:input.error,lastSuccess:old?.lastSuccess||null});continue;}try{const parsed=model.parse(input.source,input.values,start);candidates.push(...parsed.rows.map(r=>({...r,sheetId:input.sheetId})));report.issues.push(...parsed.issues);report.sources.push({fleet:input.source.fleet,state:'已讀取',lastSuccess:report.at,cells:parsed.rows.length});}catch(e){report.sources.push({fleet:input.source.fleet,state:'格式／週期待核對，保留既有資料',error:safe(e),lastSuccess:old?.lastSuccess||null});}}
+ const parts=model.partition(candidates);report.issues.push(...parts.issues);
+ const options=await staff.options(db),roster=await staff.roster(db),existing=(await db.query('SELECT * FROM staffing_demands WHERE cycle_start=$1',[start])).rows;
+ const links=(await db.query('SELECT l.* FROM staffing_source_links l JOIN staffing_demands d ON d.id=l.demand_id WHERE d.cycle_start=$1',[start])).rows;const byId=new Map(links.map(l=>[String(l.demand_id),l]));
+ const issue=(r,reason)=>report.issues.push({...r,reason});
+ for(const r of parts.accepted){
+  const matches=options.routes.filter(x=>x.routeCode===r.route);if(matches.length!==1){issue(r,matches.length?'平台路線主檔重複':'平台路線主檔尚未建立');continue;}const route=matches[0];
+  const key=[start,r.sourceId,r.date,r.route].join('|'),found=existing.filter(x=>x.service_date===r.date&&x.route_code===r.route);
+  if(found.length>1){issue(r,'平台有多個波次，須人工對應');continue;}let before=found[0];
+  if(before){const link=byId.get(String(before.id));if(before.cancelled){issue(r,'平台已停駛，來源不會自動恢復');continue;}if(link?.source_key!==key&&link){issue(r,'已由另一來源維護');continue;}
+   if(!link){issue(r,'平台已有人工安排，請人工核對後處理');continue;}
+   if(String(before.revision)!==String(link.last_revision)||before.driver_code!==link.source_driver||before.fleet_name!==link.source_fleet){issue(r,'平台已人工修改，來源不會覆蓋');continue;}
+   if(!r.driver&&before.driver_code){issue(r,'來源清空司機，請人工確認退排');continue;}
+   if(before.driver_code===r.driver&&before.fleet_name===r.fleet){report.unchanged++;continue;}
+   const after=await staff.update(db,before.id,{driverCode:r.driver,fleetName:r.fleet,expectedRevision:before.revision,verified:true},actor);await db.query('UPDATE staffing_source_links SET last_revision=$2,source_driver=$3,source_fleet=$4,source_position=$5,synced_at=NOW() WHERE demand_id=$1',[before.id,after.revision,r.driver,r.fleet,{sourceId:r.sourceId,sheetId:r.sheetId,row:r.row,col:r.col,raw:r.raw}]);report.updated++;
+  }else{
+   if(existing.length+report.added>=5000){issue(r,'本週需求超過5000筆上限');continue;}
+   await staff.createCycle(db,{start,verified:true},actor);const checked=require('./staffingModel').driverState(r.driver,roster.index);
+   const after=(await db.query("INSERT INTO staffing_demands(cycle_start,route_uid,route_code,category,business_type,service_date,departure_window,stop_count,fleet_name,driver_code,driver_name_snapshot,driver_filled_at,created_by,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,CASE WHEN $10='' THEN NULL ELSE clock_timestamp() END,$12,$12) RETURNING *",[start,route.uid,r.route,route.category,route.business,r.date,route.time,route.stops,r.fleet,r.driver,checked.name,actor.username])).rows[0];
+   await db.query('INSERT INTO staffing_history(demand_id,actor,action,before_data,after_data) VALUES($1,$2,$3,NULL,$4)',[after.id,actor.username,'由公司回填表建立需求',after]);await audit(db,actor,'由公司回填表建立需求','週期人員',after.id,r.date+'／'+r.route);
+   await db.query('INSERT INTO staffing_source_links(demand_id,source_key,last_revision,source_driver,source_fleet,source_position) VALUES($1,$2,$3,$4,$5,$6)',[after.id,key,after.revision,r.driver,r.fleet,{sourceId:r.sourceId,sheetId:r.sheetId,row:r.row,col:r.col,raw:r.raw}]);report.added++;
+  }
+ }
+ report.readCells=candidates.length;report.filledCells=candidates.filter(r=>r.driver).length;report.blankCells=candidates.length-report.filledCells;
+ await db.query('INSERT INTO staffing_sync_state(cycle_start,report) VALUES($1,$2) ON CONFLICT(cycle_start) DO UPDATE SET report=$2,updated_at=NOW()',[start,report]);await audit(db,actor,'同步公司司機回填','週期人員',start,'新增'+report.added+'／更新'+report.updated+'／待核對'+report.issues.length);return report;
+}
+async function sync(start,actor={username:'公司回填自動同步',role:'admin'},adapter=require('./fleetSheets')){
+ require('./staffingModel').cycle(start);if(process.env.WAYAN_ENV!=='staging')throw Object.assign(new Error('僅限獨立測試環境'),{status:403});if(running)throw Object.assign(new Error('同步中，請稍候'),{status:409});running=true;
+ try{const inputs=[];for(const source of sources){try{inputs.push({source,...await read(source,adapter.google)});}catch(e){inputs.push({source,error:safe(e)});}}return await transaction(pool,db=>apply(db,start,inputs,actor));}finally{running=false;}
+}
+function start(){if(process.env.WAYAN_ENV!=='staging'||!require('./fleetSheets').credentialsReady())return ()=>{};const tick=async()=>{const day=dates.todayInTaipei(),w=dates.weekdayOf(day),current=dates.addDays(day,-((w-2+7)%7)),next=dates.addDays(current,7);for(const c of [current,next]){if(running)return;try{await sync(c);}catch(e){console.error('STAFF_SOURCE_SYNC_FAILED',safe(e));}}};const first=setTimeout(tick,15000),timer=setInterval(tick,300000);first.unref();timer.unref();return ()=>{clearTimeout(first);clearInterval(timer);};}
+module.exports={status,read,apply,sync,start};
