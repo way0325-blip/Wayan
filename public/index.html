@@ -886,7 +886,8 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
 <p id="opsCommand" style="white-space:pre-wrap"></p><form id="opsCheckinForm"><p id="opsFormError" class="opsFormError control-error" role="alert"></p><div class="form-grid"><div class="field"><label>目前累計報到總車數</label><input id="opsTotal" type="number" min="0" max="200000" step="1" required></div><div class="field"><label>補登／更正原因（必填）</label><input id="opsReportNote" maxlength="500" required></div></div><button class="primary" id="opsCheckinSave">登記累計總數</button></form><div id="opsCheckinRows" class="table-wrap"></div></div></div>
 
 <script src="/deliveryRouting.js?v=1"></script>
-<script src="/storeDelivery.js?v=source-carrier-5"></script><script src="/deliveryDispatch.js?v=source-carrier-6"></script><script src="/fleets.js?v=fleet-line-workspace-1"></script><script src="/lineKeywords.js"></script><script src="/lineActivity.js?v=chat-1"></script>
+<script src="/dispatchWindow.js?v=20261114-noon1"></script>
+<script src="/storeDelivery.js?v=20261114-operations2"></script><script src="/deliveryDispatch.js?v=20261114-operations2"></script><script src="/fleets.js?v=fleet-line-workspace-1"></script><script src="/lineKeywords.js"></script><script src="/lineActivity.js?v=chat-1"></script>
 <script src="/operations.js"></script><script src="/penalties.js"></script>
 <script>
 const todayEl = document.getElementById("today");
@@ -2874,8 +2875,8 @@ loadPublicSettings();
 })();
 </script>
 
-<script src="/serviceDay.js?v=1"></script>
-<script src="/shopeeWorkspace.js?v=fleet-list-3"></script>
+<script src="/serviceDay.js?v=20261114-operations2"></script>
+<script src="/shopeeWorkspace.js?v=20261114-operations2"></script>
 <script src="/adminDelivery.js?v=pickup-2"></script>
 <script src="/workspace.js?v=receipt-20261114"></script>
 <script src="/routeRegions.js?v=1"></script>
@@ -2885,7 +2886,7 @@ loadPublicSettings();
 <script src="/rosterEditor.js?v=parking-2"></script>
 <script src="/rosterSync.js?v=1"></script>
 <script src="/dailyTaskFormat.js?v=trip-based-2"></script>
-<script src="/dailyTasks.js?v=trip-based-2"></script>
+<script src="/dailyTasks.js?v=20261114-operations2"></script>
 <script src="/driverRouteDesk.js?v=1"></script>
 <script src="/fleetTaskModel.js?v=weekly-source-3"></script>
 <script src="/fleetTasks.js?v=source-carrier-5"></script>
@@ -2894,11 +2895,14 @@ loadPublicSettings();
 <script src="/carrierMappings.js?v=1"></script>
 <script src="/attendanceSync.js?v=1"></script>
 <script src="/progressiveLayout.js?v=no-period-4"></script>
-<script src="/shopeeIntegrated.js?v=staffing-20261114"></script>
+<script src="/shopeeIntegrated.js?v=20261114-hourly1"></script>
 <script src="/pickupRouteTabs.js?v=1"></script>
 <script src="/platformSheets.js?v=1"></script>
 <script src="/routeBackoffice.js?v=1"></script>
 <script src="/weeklyStaffing.js?v=20261114-source2"></script>
 <script src="staffingSync.js?v=20261114-source1"></script>
+<script src="hourlyTasks.js?v=20261114-hourly1"></script>
+<script src="operationSources.js?v=20261114-source1"></script>
+<script src="dailyFleetTasks.js?v=20261114-noon1"></script>
 </body>
 </html>

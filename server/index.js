@@ -119,6 +119,7 @@ app.use('/api/store-delivery',require('./routes/storeDelivery'));
 app.use('/api/shopee-live',require('./routes/shopeeLive'));
 app.use('/api/source-catalog',require('./routes/sourceCatalog'));
 app.use('/api/pickup-routes',require('./routes/pickupRoutes'));
+app.use('/api/operation-sources',require('./routes/operationSources'));
 app.use('/api/weekly-staffing',require('./routes/weeklyStaffing'));
 app.use('/api/route-settings',require('./routes/routeSettings'));
 app.use('/api/platform-sheets',require('./routes/platformSheets'));
@@ -159,10 +160,11 @@ async function start() {
   require('./platformSheets').start();
   require('./routeSheets').start();
   require('./staffingSync').start();
+  require('./hourlyTasks').start();
   app.listen(PORT, () => {
     console.log(`港區星際運輸調度中心伺服器已啟動: http://localhost:${PORT}`);
     require('./sourceCatalogBootstrap').bootstrapSourceCatalog(require('./db').pool)
-      .then(async result=>{if(result.length)console.log('SOURCE_CATALOG_INITIAL_IMPORT',JSON.stringify(result));if(process.env.WAYAN_ENV==='staging'){await require('./rosterSheets').ensureInitial();require('./rosterSheets').startPolling();await require('./fleetOperations').enqueueSheet(require('./db').pool,'attendance','current');require('./attendanceSheets').start();}})
+      .then(async result=>{if(process.env.WAYAN_ENV==='staging'){try{await require('./routeSourceRefresh').refresh();}catch(e){console.error('ROUTE_SOURCE_REFRESH_FAILED',e.code||e.status||'SOURCE_READ_FAILED');}try{await require('./realFleetRegistry').sync();}catch(e){console.error('REAL_FLEET_REGISTRY_FAILED',e.code||'REGISTRY_FAILED');}}if(result.length)console.log('SOURCE_CATALOG_INITIAL_IMPORT',JSON.stringify(result));if(process.env.WAYAN_ENV==='staging'){await require('./rosterSheets').ensureInitial();require('./rosterSheets').startPolling();await require('./fleetOperations').enqueueSheet(require('./db').pool,'attendance','current');require('./attendanceSheets').start();}})
       .catch(()=>console.error('SOURCE_CATALOG_INITIAL_IMPORT_FAILED'));
   });
 }

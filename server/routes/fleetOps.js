@@ -14,7 +14,7 @@ const admin=requireRole('admin');
 router.get('/activity-status',async(req,res,next)=>{try{
   res.set('Cache-Control','no-store').json((await pool.query(`SELECT f.id,f.name,f.status,g.group_id IS NOT NULL AS bound,r.label AS group_name,r.bot_present,r.last_seen_at,
     (SELECT MAX(a.received_at) FROM fleet_line_activity a WHERE a.fleet_id=f.id) AS last_activity
-    FROM partner_fleets f LEFT JOIN line_fleet_groups g ON g.fleet_id=f.id LEFT JOIN line_group_registry r ON r.group_id=g.group_id ORDER BY f.name LIMIT 1000`)).rows);
+    FROM partner_fleets f LEFT JOIN line_fleet_groups g ON g.fleet_id=f.id LEFT JOIN line_group_registry r ON r.group_id=g.group_id WHERE NOT f.is_simulated ORDER BY f.name LIMIT 1000`)).rows);
 }catch(e){next(e);}});
 router.get('/activity',async(req,res,next)=>{try{
   const fleetId=req.query.fleetId||'';if(typeof fleetId!=='string'||fleetId.length>100)return res.status(400).json({error:'車隊篩選無效'});
@@ -77,7 +77,7 @@ router.get('/fleets',async(req,res,next)=>{
   try{
     const rows=(await pool.query(`SELECT f.id,f.name,f.contact_name,f.phone,f.daily_capacity,f.status,
       (g.group_id IS NOT NULL) AS group_bound FROM partner_fleets f LEFT JOIN line_fleet_groups g ON g.fleet_id=f.id
-      WHERE (f.name ILIKE '%'||$1||'%' OR f.id ILIKE '%'||$1||'%') AND f.id>$2 ORDER BY f.id LIMIT 51`,[query,after])).rows;
+      WHERE NOT f.is_simulated AND (f.name ILIKE '%'||$1||'%' OR f.id ILIKE '%'||$1||'%') AND f.id>$2 ORDER BY f.id LIMIT 51`,[query,after])).rows;
     res.json({items:rows.slice(0,50),nextCursor:rows.length>50?rows[49].id:null});
   }catch(err){next(err);}
 });
