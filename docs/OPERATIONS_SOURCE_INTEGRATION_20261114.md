@@ -5,7 +5,7 @@
 ## 包時任務
 五家車隊：元佑倉、風林火山、裕富、全華、富誠。唯讀讀取班表填寫(新)/班表回填(新)，日期、區域、車型、姓名、車號、班別、班次分欄。全華/裕富/富誠已確認原始分頁；另兩家目前沒有對應分頁，顯示來源待確認，不建立虛擬班次。姓名/車號回填不視為已驗證司機ID或LINE報到。班次名稱不推算費用，不自動計費。
 
-026 migration新增hourly_task_snapshots與hourly_task_history，更新保留前後內容及稽核。API GET/POST /api/weekly-staffing/hourly，admin/dispatcher；讀取失敗保留上次資料。啟動90秒後及服務運行期間每5分鐘更新本週及下週，兩個週期共用一次來源讀取。
+026 migration新增hourly_task_snapshots與hourly_task_history，更新保留前後內容及稽核。API GET/POST /api/weekly-staffing/hourly，admin/dispatcher；讀取失敗保留上次資料。啟動150秒後及服務運行期間每5分鐘更新本週及下週，兩個週期共用一次來源讀取。
 
 ## 路線來源
 主來源為12nj_N2zUrNHnYi0krf1kgorfqtJpz6y6MrMvAJ0WXSc固定NB/FN/WB分頁，沿用既有欄位檢查、站序、箱型及地區規則。補充元佑倉/富詠當期Raw原始分頁，僅C,D,F,G,H,I,J欄（不讀司機ID欄）。原始欄位位移經核對；補齊主來源缺少的編號，原主來源同編號優先，補充來源重複留待核對。保留每筆補充來源ID、分頁、列號與車行。1899/12/30不是出車時間，標記待核對。SER等未支援業務前綴不杜撰種類。
@@ -63,3 +63,6 @@ POST /api/operation-sources/fleets（admin）依10份回填表及既有有效車
 - docs/OPERATIONS_SOURCE_INTEGRATION_20261114.md
 
 介面驗證：包時與每日任務DOM13項通過，包含全選/取消、阻擋待核對路線、複製保留ID、取貨點預設與確認前不建趟/不發LINE。第一輪Linux CI412成功0失敗、lint185項通過。
+
+實測發現並修正：既有鏡像的倉別/取貨點欄名保護擋住active/selection_label新欄位。只對這兩個已知平台鏡像、已確認原欄名且同一管理試算表的情況追加新欄名；其他人工欄位依然拒絕覆蓋。增加兩項整合測試。首次公司回填讀取延後至啟動75秒，包時150秒，以避開來源主檔更新與原有名冊輪詢尖峰。
+追加檔案：server/platformSheets.js。
