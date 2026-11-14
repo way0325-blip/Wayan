@@ -1,0 +1,12 @@
+const router=require('express').Router(),{pool}=require('../db'),{transaction}=require('../transaction'),{requireAuth,requireRole}=require('../auth'),svc=require('../weeklyStaffing'),model=require('../staffingModel');
+router.use(requireAuth,requireRole('admin','dispatcher'),(req,res,next)=>{res.set('Cache-Control','no-store');next();});
+const handle=fn=>async(req,res,next)=>{try{res.json(await fn(req));}catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e);}};
+router.get('/',handle(req=>svc.board(pool,req.query.start||model.nextCycle().start_date)));
+router.get('/options',handle(()=>svc.options(pool)));
+router.get('/history/:id',handle(async req=>(await pool.query('SELECT actor,action,before_data,after_data,at FROM staffing_history WHERE demand_id=$1 ORDER BY id DESC LIMIT 100',[/^\d{1,15}$/.test(req.params.id)?req.params.id:'0'])).rows));
+router.post('/cycles',handle(req=>transaction(pool,db=>svc.createCycle(db,req.body,req.user))));
+router.post('/demands',handle(req=>transaction(pool,db=>svc.addDemands(db,req.body,req.user))));
+router.put('/demands/:id',handle(req=>transaction(pool,db=>svc.update(db,req.params.id,req.body,req.user))));
+router.post('/preview',handle(req=>svc.preview(pool,req.body)));
+router.post('/import',handle(req=>transaction(pool,db=>svc.applyImport(db,req.body,req.user))));
+module.exports=router;
