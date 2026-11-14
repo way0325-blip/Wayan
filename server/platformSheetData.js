@@ -2,6 +2,8 @@ const {hash,SOURCE_ID}=require('./sourceCatalog');
 const MAX_ROWS=20000,MAX_CELLS=1500000;
 const view=(name,table,spec,where='')=>({name:'平台_'+name,table,columns:spec.split('|').map(x=>x.split(':')),where});
 const views=[
+ view('排班週期','staffing_cycles','start_date:週期開始|end_date:週期結束|weekly_due_date:整週截止日|created_by:建立人|created_at:建立時間'),
+ view('排班異動歷程','staffing_history','id:紀錄ID|demand_id:需求ID|actor:操作人|action:異動|before_data:原資料|after_data:新資料|at:時間'),
  view('自有司機','drivers','id:司機編號|name:姓名|phone:電話|license:證照|status:狀態|roster_driver_id:雲端司機ID'),
  view('自有車輛','vehicles','id:車輛編號|plate:車牌|type:車型|maintenance:保養|inspection_date:驗車日|status:狀態'),
  view('車輛保養','vehicle_maintenance_items','id:紀錄ID|vehicle_id:車輛ID|item_name:保養項目|due_date:期限|note:備註|created_at:建立時間'),
@@ -49,7 +51,8 @@ async function collect(db){const result=[];for(const v of views){const fields=v.
  const rosterFields={drivers:['externalDriverId','name','phone','vehicleType','licenseType','license','warehouse','sourceStatus'],vehicles:['plate','vehicleType','driverName','externalDriverId'],parking:['plate','vehicleType','supplier','use','externalDriverId'],cars:['plate','vehicleType','phone','registeredOn','submitted']},rosterNames={drivers:'雲端司機名冊',vehicles:'雲端車輛名冊',parking:'園區停車場名冊',cars:'汽車造冊'},rosterLabels={drivers:['司機ID','姓名','電話','車型','證照類型','證照期限','倉別','狀態'],vehicles:['車牌','車型','參考司機','參考司機ID'],parking:['車牌','車型','車行','用途','車主司機ID'],cars:['車牌','車型','電話','登錄日期','提交狀態']};for(const kind of Object.keys(rosters))result.push(dataset('平台_'+rosterNames[kind],rosterLabels[kind],rosters[kind].map(r=>rosterFields[kind].map(k=>r[k]))));
  const mapping=await require('./carrierMappings').catalog(db);result.push(dataset('平台_車行路線對照',['路線編號','地區','來源車行','問題','來源版本'],mapping.records.map(r=>[r.routeCode,require('../public/routeRegions').classify(r.routeCode).region,r.fleetName,r.problems.join('；'),mapping.mappingId])));
  const trips=result.find(r=>r.name==='平台_派車任務'),projected=await require('./routeCarriers').attachTrips(db,trips.rows.map(r=>({id:r[0],source_fleet_name:r[12]})));trips.headers.push('目前核對來源車行','車行核對狀態','車行對照版本');trips.rows.forEach((r,i)=>r.push(projected[i].source_fleet_name,projected[i].source_carrier_status,cell(projected[i].source_carrier_mapping_id)));
+ const staff=await require('./weeklyStaffing').exportRows(db);result.push(dataset('平台_週期排班',['需求ID','週期開始','任務日期','業務類型','路線編號','波次','車行','出車時段','總店數','司機ID','姓名','狀態','待核對原因','單日最晚填寫日','整週截止後未完成','單日逾期未完成','填寫時間','更新時間','備註'],staff.map(r=>[r.id,r.cycle_start,r.service_date,r.business_type,r.route_code,r.slot,r.fleet_name,r.departure_window,r.stop_count,r.driver_code,r.driver_name,r.label,r.driver_problem,r.daily_due_date,r.weekly_late,r.daily_late,r.driver_filled_at,r.updated_at,r.note])));
  for(const v of result)if(v.rows.length>MAX_ROWS)throw Object.assign(new Error('PLATFORM_ROW_LIMIT'),{code:'PLATFORM_ROW_LIMIT'});if(result.reduce((n,v)=>n+(v.rows.length+1)*v.headers.length,0)>MAX_CELLS)throw Object.assign(new Error('PLATFORM_CELL_LIMIT'),{code:'PLATFORM_CELL_LIMIT'});return {datasets:result,digest:hash(result)};
 }
-const tables=new Set([...views.map(v=>v.table),'source_catalog_batches','pickup_route_batches','dispatch_source_batches','line_driver_bindings','route_overrides']);tables.delete('fleet_delivery_jobs');tables.delete('settings');
+const tables=new Set([...views.map(v=>v.table),'source_catalog_batches','pickup_route_batches','dispatch_source_batches','line_driver_bindings','route_overrides','staffing_demands']);tables.delete('fleet_delivery_jobs');tables.delete('settings');
 module.exports={collect,views,cell,tables,MAX_ROWS};

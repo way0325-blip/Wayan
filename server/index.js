@@ -119,6 +119,7 @@ app.use('/api/store-delivery',require('./routes/storeDelivery'));
 app.use('/api/shopee-live',require('./routes/shopeeLive'));
 app.use('/api/source-catalog',require('./routes/sourceCatalog'));
 app.use('/api/pickup-routes',require('./routes/pickupRoutes'));
+app.use('/api/weekly-staffing',require('./routes/weeklyStaffing'));
 app.use('/api/route-settings',require('./routes/routeSettings'));
 app.use('/api/platform-sheets',require('./routes/platformSheets'));
 app.use('/api/route-carriers',require('./routes/carrierMappings'));
