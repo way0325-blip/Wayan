@@ -1,7 +1,7 @@
 const router=require('express').Router(),{requireAuth,requireRole}=require('../auth'),oauth=require('../googleSourceOAuth');const COOKIE='wayan_google_source_state';router.use((req,res,next)=>{res.set({'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});next();});
 router.get('/callback',async(req,res)=>{try{const cookies=Object.fromEntries(String(req.headers.cookie||'').split(';').map(x=>x.trim().split('=')));await oauth.finish(req.query,cookies[COOKIE]);res.clearCookie(COOKIE,{path:'/'});res.redirect('/?googleSource=connected');}catch(e){res.clearCookie(COOKIE,{path:'/'});res.status(e.status||400).type('text').send('Google來源連接未完成。請返回平台重新連接；公司帳號或應用程式可能需要管理員授權。');}});
 router.use(requireAuth,requireRole('admin'));
-router.get('/status',async(req,res,next)=>{try{res.json(await oauth.status());}catch(e){next(e);}});
+router.get('/status',async(req,res,next)=>{try{res.json(await oauth.status());}catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e);}});
 router.post('/client',async(req,res,next)=>{try{await oauth.saveClient(req.body,req.user);res.json({saved:true});}catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e);}});
 router.post('/begin',async(req,res,next)=>{try{const r=await oauth.begin(req.user);res.cookie(COOKIE,r.cookie,{httpOnly:true,secure:oauth.redirect().startsWith('https:'),sameSite:'lax',path:'/',maxAge:10*60*1000});res.json({url:r.url});}catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e);}});
 router.delete('/connection',async(req,res,next)=>{try{await oauth.disconnect(req.user);res.json({disconnected:true});}catch(e){next(e);}});module.exports=router;
