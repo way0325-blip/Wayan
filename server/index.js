@@ -152,6 +152,7 @@ async function start() {
     throw new Error('測試平台啟動需要獨立的 JWT_SECRET（至少 32 字）及 ADMIN_PASSWORD（至少 12 字），禁止沿用展示密碼');
   }
   await initDb();
+  try{const c=await require('./googleSourceOAuth').status();console.log('GOOGLE_SOURCE_CONFIG_STATUS',JSON.stringify({keyReady:c.keyReady,clientReady:c.clientReady,configurationSource:c.configurationSource,connected:c.connected}));}catch{console.error('GOOGLE_SOURCE_CONFIG_STATUS_FAILED');}
   try {const demo=await require('./stagingDemoOrders').setupStagingDemo(require('./db').pool);if(demo.status!=='disabled')console.log('STAGING_DEMO_ORDERS',JSON.stringify(demo));}catch(err){console.error('STAGING_DEMO_ORDERS_FAILED',err.code||'SETUP_FAILED');}
   try {
     const setup=await require('./stagingFleetBootstrap').setupStagingFleet(require('./db').pool);
