@@ -11,4 +11,5 @@ function parse(source,values,start){
  return {rows,issues};
 }
 function partition(rows){const map=new Map();for(const r of rows){const k=r.date+'|'+r.route;const list=map.get(k)||[];list.push(r);map.set(k,list);}const accepted=[],issues=[];for(const list of map.values()){if(list.length>1){for(const r of list)issues.push({...r,reason:'同日同路線重複，未自動選擇來源'});}else accepted.push(list[0]);}return {accepted,issues};}
-module.exports={parse,partition};
+function routeMatches(routes,code,sourceType){const matches=routes.filter(r=>r.routeCode===code),type=String(sourceType||'').trim().toUpperCase().replace(/\s+/g,'');if(matches.length<2||!['主線','NDD','WHNDD'].includes(type))return matches;const typed=matches.filter(r=>(r.business||require('./staffingModel').business(r.routeCode,r.category))===type);return typed.length?typed:matches;}
+module.exports={parse,partition,routeMatches};
