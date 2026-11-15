@@ -32,3 +32,7 @@ public/unifiedSync.js提供全站「立即同步並更新畫面」，依序呼�
 本機統一同步UI12項成功0失敗。新增／修改public/unifiedSync.js、public/index.html、public/personnelSources.js、public/staffingSync.js及本文件。
 
 統一按鈕另將路線後台、出勤與全營運Google輸出排入既有同步佇列；明確顯示排隊中，不將queued回覆當作已送達。共10個處理步驟，來源失敗不阻斷後續。UI13項成功0失敗；public/routeBackoffice.js的舊60秒提示同步改為每1小時。
+
+## 每日回填需求類型欄
+每日需求API在每筆rows新增sourceType（直接讀取回填來源B欄類型，空白保留空字串）；不以主檔category覆寫來源類型。前端在路線／店數旁新增類型欄，空白顯示未填，搜尋包含來源類型。原需求選取、跨日範圍、建趟檢查與來源筆數不變。
+檔案：server/dailyFleetTasks.js、public/dailyFleetTasks.js、public/index.html、server/tests/operation-source-model.test.js及本文件。API沿用/api/weekly-staffing/daily，無資料庫migration。模型13成功0失敗、作業UI14成功0失敗；全套CI另核對。
