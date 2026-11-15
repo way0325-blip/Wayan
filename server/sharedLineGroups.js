@@ -10,7 +10,7 @@ async function handle(db,event,eventId){
  if(!allowed.length)return null;
  const c=command(event.message.text);
  if(!c&&!/^(說明|help|指令|接取|接取路線|車趟報到|報到|車趟狀態|退趟|退車趟|改報|車趟異常)(?:\s|$)/i.test(String(event.message.text||'').trim()))return null;
- if(!c)return '【共同作業群組】\n接取 任務編號 司機ID\n車趟報到 任務編號\n退趟 任務編號 原因\n改報 原任務編號 新任務編號 司機ID 原因\n車趟異常 任務編號 延誤／車輛異常／貨損／事故／其他 說明\n請使用公告中的完整任務編號，完整站點請私訊Bot查詢。';
+ if(!c)return require('./botCommands').groupHelp;
  if(!event.source.userId)return '無法確認回報者，請聯絡調度。';
  await db.query('SELECT pg_advisory_xact_lock(870033)');
  const rows=(await db.query("SELECT t.id,t.task_code,t.fleet_id,f.name,f.status FROM delivery_trips t JOIN partner_fleets f ON f.id=t.fleet_id JOIN line_shared_group_fleets g ON g.fleet_id=f.id AND g.group_id=$1 WHERE upper(t.task_code)=$2 AND t.service_date=$3 AND NOT t.is_simulated AND t.driver_claim_required=TRUE LIMIT 2 FOR SHARE OF t,f",[group,c.key,todayInTaipei()])).rows;

@@ -69,7 +69,7 @@ async function handleFleetGroupEvent(db,event,eventId){
   if(checkin!==null)return checkin;
   const intake=await require('./lineIncidentIntake').handle(db,event,eventId,fleet);if(intake!==null)return intake;
   if(text==='門店車趟')return require('./deliveryLine').list(db,fleet);
-  if(/^(說明|help|指令)$/i.test(text))return '【車隊指令】\n門店車趟\n接取 路線編號 司機ID\n車趟報到 路線編號\n退趟 路線編號 原因\n改報 原路線 新路線 司機ID 原因\n完整路線請本人私訊：我的路線 任務編號\n異常回報／異常進度 案件編號';
+  if(/^(說明|help|指令)$/i.test(text))return require('./botCommands').groupHelp;
   const keyword=await require('./lineKeywords').keywordReply(db,text);
   if(keyword!==null)return keyword;
   const actor={username:`LINE車隊:${fleet.id}:${userId.slice(-6)}`,role:'fleet'};

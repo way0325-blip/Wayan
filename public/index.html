@@ -380,12 +380,12 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
       <div class="control-hero"><div><span class="eyebrow">WAYAN / LINE DRIVER ASSISTANT</span><h1>司機的行動工作入口</h1><p>綁定身分、查詢任務、回報現場狀況。</p></div><button class="action secondary" id="botRefresh">更新狀態</button></div>
       <p id="botError" class="control-error" role="alert"></p>
       <div class="control-split"><div class="panel"><h3>綁定司機</h3><p id="botConfigured" role="status">等待檢查</p><ol class="bot-steps"><li>選擇司機，產生十分鐘有效的一次性綁定碼。</li><li>將代碼私下交給本人，請司機加測試官方帳號好友。</li><li>司機私訊輸入「綁定 代碼」，完成後即可查詢自己的任務。</li></ol><div class="control-toolbar"><input id="botDriverSearch" type="search" placeholder="搜尋司機 ID、姓名、倉別" aria-label="搜尋司機"><select id="botDriverStatus" aria-label="綁定狀態"><option value="">全部司機</option><option value="unbound">未綁定</option><option value="bound">已綁定</option><option value="review">待核對</option></select><select id="botDriver" aria-label="選擇綁定司機"></select><button class="action" id="botGenerate">產生綁定碼</button></div><p id="botDirectoryCount" class="hint" role="status"></p><p id="botCode" class="control-code control-notice" role="status"></p></div>
-      <div class="panel"><h3>司機指令</h3><p class="control-notice">我的任務
-統計
-到站 訂單編號
-完成 訂單編號
-異常 訂單編號 說明
-事故 訂單編號 說明</p><p class="hint">僅在私人對話提供本人任務。未綁定帳號無法讀取派車資料。回報事故或車輛異常後，車輛會停派並通知管理端。</p></div></div>
+      <div class="panel"><h3>統一 Bot 指令</h3><p class="control-notice">接單 任務編號 司機ID
+報到 任務編號
+查任務 任務編號
+退單 任務編號 原因
+改報 原任務編號 新任務編號 司機ID 原因
+回報 任務編號 類型 說明</p><p class="hint">固定路線使用公告完整任務碼；追加／爆量車使用 E 任務碼，可提前接單、作業當日報到。追加車已報到後須聯絡調度覆核，不支援直接改報或自動取消。完整固定路線請本人私訊「我的路線 任務編號」。異常類型：延誤、車輛異常、貨損、事故、其他。舊指令接取、車趟報到、退趟仍可使用。</p></div></div>
       <details class="panel admin-only hidden"><summary>共同作業群組設定</summary><p class="hint">各車隊群組發布公告，共同群組接取、報到、退趟及車趟異常。資料依任務原屬車隊記錄；完整站點由司機私訊查詢。</p><select id="sharedGroup" aria-label="共同作業群組"></select><button class="action secondary" id="sharedRefresh">重新載入</button><label>受理任務類型 <select id="sharedScope"><option value="all">全部任務</option><option value="orange">橘箱：NB／NJ／NC／FM／FN／FC</option><option value="black">黑箱：WB／WD／WC</option></select></label><div id="sharedFleets"></div><button class="action" id="sharedSave">儲存允許車隊</button><p id="sharedStatus" role="status"></p></details><div class="panel"><h3>已綁定司機</h3><div id="botBindings"></div></div><br>
       <div class="panel"><h3>近期事件與重試</h3><p class="hint">處理失敗可重試，已完成資料異動不會重複執行。若只有回覆失敗，請司機重新發送「我的任務」確認狀態。</p><div id="botEvents" class="table-wrap"></div></div>
     </section>
@@ -887,7 +887,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
 
 <script src="/deliveryRouting.js?v=1"></script>
 <script src="/dispatchWindow.js?v=20261114-noon1"></script>
-<script src="/storeDelivery.js?v=20261114-operations2"></script><script src="/deliveryDispatch.js?v=20261114-operations2"></script><script src="/fleets.js?v=fleet-line-workspace-1"></script><script src="/lineKeywords.js"></script><script src="/lineActivity.js?v=chat-1"></script>
+<script src="/storeDelivery.js?v=20261114-operations2"></script><script src="/deliveryDispatch.js?v=bot-20261115-20261114-operations2"></script><script src="/fleets.js?v=fleet-line-workspace-1"></script><script src="/lineKeywords.js"></script><script src="/lineActivity.js?v=chat-1"></script>
 <script src="/operations.js"></script><script src="/penalties.js"></script>
 <script>
 const todayEl = document.getElementById("today");
@@ -2905,5 +2905,6 @@ loadPublicSettings();
 <script src="operationSources.js?v=20261114-source1"></script>
 <script src="dailyFleetTasks.js?v=20261114-noon1"></script>
 <script src="/sharedLineGroups.js?v=20261115-1"></script>
+<script src="/extraDemands.js?v=20261115-1"></script>
 </body>
 </html>

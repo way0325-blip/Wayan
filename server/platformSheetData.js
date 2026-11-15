@@ -2,6 +2,11 @@ const {hash,SOURCE_ID}=require('./sourceCatalog');
 const MAX_ROWS=20000,MAX_CELLS=1500000;
 const view=(name,table,spec,where='')=>({name:'平台_'+name,table,columns:spec.split('|').map(x=>x.split(':')),where});
 const views=[
+ view('罰款訊息待核對','penalty_message_drafts','id:訊息草稿ID|route_code:路線編號|driver_code:司機ID|violation_kind:異常項目|source_amount:原訊息金額未確認|source_text:原始訊息|case_id:人工立案ID|status:狀態|created_at:接收時間'),
+ view('追加需求來源','line_demand_sources','group_id:來源群組|enabled:啟用|updated_by:設定人|updated_at:時間'),
+ view('追加爆量需求','extra_transport_demands','id:需求ID|service_date:作業日|departure_time:出車時間|task_name:需求名稱|business_scope:類型|required_trucks:需求車數|driver_due_at:司機ID截止|status:狀態|created_at:擷取時間'),
+ view('追加車位報到','extra_transport_slots','id:E任務編號|demand_id:需求ID|slot_no:車位|fleet_id:執行車隊|route_code:路線編號|driver_code:司機ID|accepted_at:接單時間|checked_in_at:報到時間|completed_at:完成時間|updated_at:更新時間'),
+ view('追加需求歷程','extra_transport_history','id:紀錄ID|slot_id:車位ID|demand_id:需求ID|action:操作|actor:操作人|detail:內容|at:時間'),
  view('車趟改派歷程','delivery_fleet_changes','id:紀錄ID|trip_id:任務ID|previous_fleet_id:原執行車隊ID|next_fleet_id:新執行車隊ID|source_fleet_name:來源車行|reason:改派原因|actor:操作人|changed_at:改派時間'),
  view('共同作業群組','line_shared_group_fleets','group_id:群組ID|fleet_id:允許車隊ID|business_scope:任務類型|created_by:設定人|created_at:設定時間'),
  view('排班週期','staffing_cycles','start_date:週期開始|end_date:週期結束|weekly_due_date:整週截止日|created_by:建立人|created_at:建立時間'),

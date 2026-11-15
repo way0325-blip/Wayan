@@ -5,16 +5,19 @@ const clean=(v,max)=>typeof v==='string'&&v.trim().length<=max?v.trim():'';
 const id=v=>/^\d{1,15}$/.test(String(v||''));
 async function history(req,c,action,note){await pool.query('INSERT INTO penalty_case_history(case_id,actor,action,note) VALUES($1,$2,$3,$4)',[c.id,req.user.username,action,note]);await logAction(req,action,'罰款案件',c.id,note);}
 router.get('/',async(req,res,next)=>{try{res.set('Cache-Control','no-store').json((await pool.query('SELECT c.*,f.name AS fleet_name,r.title AS rule_title FROM penalty_cases c JOIN partner_fleets f ON f.id=c.fleet_id JOIN penalty_rules r ON r.id=c.rule_id ORDER BY c.id DESC LIMIT 200')).rows);}catch(e){next(e);}});
+router.get('/message-drafts',async(req,res,next)=>{try{const drafts=(await pool.query('SELECT * FROM penalty_message_drafts ORDER BY id DESC LIMIT 200')).rows;const rules=(await pool.query("SELECT id,rule_code,version,title,terms,proposed_amount,effective_date FROM penalty_rules WHERE status='已核實' ORDER BY rule_code,version DESC")).rows;res.set('Cache-Control','no-store').json(drafts.map(d=>({...d,ruleCandidates:rules.filter(r=>(r.title+' '+r.terms).includes(d.violation_kind))})));}catch(e){next(e);}});
 router.get('/:id/history',async(req,res,next)=>{try{if(!id(req.params.id))return res.status(400).json({error:'案件編號錯誤'});res.json((await pool.query('SELECT * FROM penalty_case_history WHERE case_id=$1 ORDER BY id',[req.params.id])).rows);}catch(e){next(e);}});
 router.post('/',async(req,res,next)=>{try{
   const b=req.body||{},responsibility=clean(b.responsibility,2000);
   if(!id(b.ruleId)||!isValidDateKey(b.occurredOn)||b.occurredOn>todayInTaipei()||!responsibility)return res.status(400).json({error:'需填寫規則、非未來發生日及責任事實（1～2000字）'});
+  let messageDraft=null;
+  if(b.messageDraftId){if(!id(b.messageDraftId))return res.status(400).json({error:'草稿編號無效'});messageDraft=(await pool.query('SELECT * FROM penalty_message_drafts WHERE id=$1 FOR UPDATE',[b.messageDraftId])).rows[0];if(!messageDraft||messageDraft.case_id)return res.status(409).json({error:'訊息草稿不存在或已立案'});}
   const rule=(await pool.query("SELECT * FROM penalty_rules WHERE id=$1 AND status='已核實'",[b.ruleId])).rows[0];
   if(!rule?.effective_date||rule.effective_date>b.occurredOn)return res.status(409).json({error:'須使用已核實且生效日不晚於發生日的規則版本'});
   if(!(await pool.query('SELECT 1 FROM partner_fleets WHERE id=$1',[b.fleetId])).rowCount)return res.status(400).json({error:'車隊不存在'});
   const incidentId=b.incidentId?String(b.incidentId):null;
   if(incidentId){if(!id(incidentId))return res.status(400).json({error:'異常案件編號無效'});const i=(await pool.query('SELECT * FROM fleet_incidents WHERE id=$1',[incidentId])).rows[0];if(!i||i.fleet_id!==b.fleetId)return res.status(409).json({error:'異常案件與車隊不符'});if((await pool.query('SELECT 1 FROM penalty_cases WHERE incident_id=$1 AND rule_id=$2',[incidentId,b.ruleId])).rowCount)return res.status(409).json({error:'此異常已建立相同規則案件'});}
-  const c=(await pool.query('INSERT INTO penalty_cases(fleet_id,rule_id,occurred_on,responsibility,created_by,incident_id) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',[b.fleetId,b.ruleId,b.occurredOn,responsibility,req.user.username,incidentId])).rows[0];await history(req,c,'建立待覆核案件',responsibility);res.status(201).json(c);
+  const c=(await pool.query('INSERT INTO penalty_cases(fleet_id,rule_id,occurred_on,responsibility,created_by,incident_id) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',[b.fleetId,b.ruleId,b.occurredOn,responsibility,req.user.username,incidentId])).rows[0];if(messageDraft)await pool.query("UPDATE penalty_message_drafts SET case_id=$2,status='已轉待覆核案件' WHERE id=$1",[messageDraft.id,c.id]);await history(req,c,'建立待覆核案件',responsibility);res.status(201).json(c);
 }catch(e){next(e);}});
 router.post('/:id/review',requireRole('admin'),async(req,res,next)=>{try{
   const b=req.body||{},note=clean(b.note,2000);if(!id(req.params.id)||!note||!['已確認','已撤銷'].includes(b.status))return res.status(400).json({error:'需選擇確認或撤銷並填寫覆核結論'});
