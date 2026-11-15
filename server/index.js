@@ -164,6 +164,7 @@ async function start() {
   require('./routeSourceRefresh').start();
   require('./staffingSync').start();
   require('./hourlyTasks').start();
+  require('./personnelSources').start();
   app.listen(PORT, () => {
     console.log(`港區星際運輸調度中心伺服器已啟動: http://localhost:${PORT}`);
     require('./sourceCatalogBootstrap').bootstrapSourceCatalog(require('./db').pool)

@@ -96,7 +96,7 @@
         if(d.bound)throw new Error('此司機已綁定，請先核對原綁定');
         if(d.problems.length)throw new Error('名冊待核對：'+d.problems.join('、'));
         if(!confirm('請確認已核對 '+d.name+' 的司機 ID '+d.driverCode+' 與本人身分，綁定指令只交給本人。'))return;
-        const r=await api(d.source==='roster'?'/api/line/admin/roster-binding-codes':'/api/line/admin/binding-codes',{method:'POST',body:JSON.stringify(d.source==='roster'?{driverCode:d.driverCode,sourceRow:d.sourceRow,verified:true}:{driverId:d.runtimeId})});
+        const r=await api(d.source==='owned'?'/api/line/admin/owned-binding-codes':d.source==='roster'?'/api/line/admin/roster-binding-codes':'/api/line/admin/binding-codes',{method:'POST',body:JSON.stringify(['roster','owned'].includes(d.source)?{driverCode:d.driverCode,sourceRow:d.sourceRow,verified:true}:{driverId:d.runtimeId})});
         set('botCode',`請只交給指定司機，在私人對話輸入：\n綁定 ${r.code}\n有效至 ${new Date(r.expiresAt).toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei'})}，舊碼已失效。`);
         set('botError','');
       } finally {target.disabled=false;}

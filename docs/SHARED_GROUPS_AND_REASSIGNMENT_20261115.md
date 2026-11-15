@@ -62,3 +62,14 @@ server/lineDriverDirectory.js、server/sharedLineGroups.js、server/tripFleetCha
 - 三個主路線表動態依已驗證分頁界限讀取，上限4000列，避免WB新增列被舊3396列截斷。
 - 支援車趟來源一併核對。2026-11-15實讀為6/28的18筆，0X占位碼、非數字站序且缺門店地址，列為待核對，不假造正式路線。
 - 新檔server/routeSupportModel.js；另修改server/sourceCatalogBootstrap.js、server/sourceCatalog.js、server/dailyFleetTasks.js、server/staffingModel.js、server/staffingSync.js及對應前端與測試。
+
+## 人員來源連結
+- 032 personnel_source_snapshots 保存經白名單篩選的自有司機、網站班表及調度休假投影；不讀身分證、緊急聯絡或密碼欄。
+- 自有名冊來源1XbjCC2gnRanLsMNJn_KCh67tv41E4YC0AuuMjiw4BLs，配合中分頁以司機工號＋姓名核對；網站班表只使用實際頁面公開讀取API的GET action=get，不執行網站程式或保存其登入Token。
+- 調度來源172HkNvh6hUMzjdyFPCYoCm-utIgaTRqI4let0HkPPVw為調度人員休假需求，空白不推定出勤，不自動核准休假或覆寫司機出勤。
+- GET/POST /api/operation-sources/personnel（管理員），每60分鐘讀取及手動更新；來源失敗保留上次快照並明示錯誤。
+- LINE設定納入新增自有名冊，與既有同ID同姓名資料去重。POST /api/line/admin/owned-binding-codes須管理員核對，未自動綁定，衝突身分不重複建立。
+- Sheets增加人員來源同步、公司自有司機名冊、自有司機網站班表、公司調度休假需求。核對有問題只標示，不自動派車。
+- 新檔server/personnelSources.js、server/personnelSourceModel.js、server/migrations/032_personnel_sources.sql、public/personnelSources.js、server/tests/personnel-source-model.test.js。
+
+新版Excel訂單範本與Excel匯出不再顯示每站件數，沿用舊資料欄位以保留歷史資料；新匯入只以車趟作業，不把舊數量當作計價。CSV舊格式仍相容。匯入先預覽，第二次明確確認才寫入。
