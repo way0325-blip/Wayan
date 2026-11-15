@@ -566,13 +566,13 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
 
       <div id="subBulk" class="panel subpanel">
         <h3>蝦皮店到店｜訂單批次匯入</h3>
-        <p class="hint">CSV欄位：訂單編號、取貨倉、門店代碼、作業日期、件數、備註、路線代碼、取貨點。取貨區域保留大園、楊梅、觀音；N／F橘箱選大園長榮／水源／大園倉，W黑箱選楊梅仁美／威獅倉。門店須先登錄並核對。每批最多500筆，任一筆失敗整批不寫入，重複訂單不覆蓋。</p>
-        <div class="toolbar"><button id="adminDeliveryTemplate" class="action secondary">下載蝦皮訂單範本</button><button id="adminDeliveryImport" class="action">選擇CSV並匯入</button></div>
-        <p class="hint">作業日期以CSV各列為準。完成後可到「蝦皮店到店」選擇對應日期查看。</p><p id="adminDeliveryImportResult" role="status"></p>
+        <p class="hint">Excel欄位：訂單編號、取貨倉、門店代碼、作業日期、件數、備註、路線代碼、取貨點。取貨區域保留大園、楊梅、觀音；N／F橘箱選大園長榮／水源／大園倉，W黑箱選楊梅仁美／威獅倉。門店須先登錄並核對。每批最多500筆，任一筆失敗整批不寫入，重複訂單不覆蓋。</p>
+        <div class="toolbar"><button id="adminDeliveryTemplate" class="action secondary">下載蝦皮訂單範本</button><button id="adminDeliveryImport" class="action">選擇Excel並匯入</button></div>
+        <p class="hint">作業日期以Excel各列為準。完成後可到「蝦皮店到店」選擇對應日期查看。</p><p id="adminDeliveryImportResult" role="status"></p>
       </div>
       <div id="subDeliveryExport" class="panel subpanel">
         <h3>蝦皮店到店｜訂單匯出下載</h3>
-        <form id="adminDeliveryExportForm"><div class="control-toolbar"><label>下載起日 <input id="adminDeliveryExportFrom" type="date" required></label><label>下載迄日 <input id="adminDeliveryExportTo" type="date" required></label><button class="action" id="adminDeliveryExport">下載訂單CSV</button></div></form>
+        <form id="adminDeliveryExportForm"><div class="control-toolbar"><label>下載起日 <input id="adminDeliveryExportFrom" type="date" required></label><label>下載迄日 <input id="adminDeliveryExportTo" type="date" required></label><button class="action" id="adminDeliveryExport">下載訂單Excel</button></div></form>
         <p class="hint">同一天請選相同日期；最多31天、10000筆。包含路線代碼、取貨點、箱型、配送類型、門店、取貨倉、件數、狀態、車趟、車隊、自有司機與車牌資訊。沒有資料仍下載欄位範本。</p>
         <p id="adminDeliveryExportResult" role="status" class="hint"></p>
       </div>
@@ -2875,6 +2875,7 @@ loadPublicSettings();
 })();
 </script>
 
+<script src="/excelFiles.js?v=20261115-1"></script>
 <script src="/serviceDay.js?v=20261114-operations2"></script>
 <script src="/shopeeWorkspace.js?v=20261114-operations2"></script>
 <script src="/adminDelivery.js?v=pickup-2"></script>

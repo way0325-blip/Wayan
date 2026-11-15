@@ -45,3 +45,12 @@ server/lineDriverDirectory.js、server/sharedLineGroups.js、server/tripFleetCha
 - GET /api/penalty-cases/message-drafts 及既有 POST /api/penalty-cases 的 messageDraftId 可原子連結人工立案，重送不重複。
 - 原規則參考金額、原訊息金額、主管人工確認金額分開；未核實條款不可計罰，無自動扣薪扣款。
 - 新檔 server/penaltyMessageIntake.js、server/migrations/031_penalty_message_drafts.sql、server/tests/penalty-message-model.test.js；修改 public/penalties.js、server/routes/penaltyCases.js。
+
+## Excel與每小時同步
+- 新增 ExcelJS 4.4.0，exceljs 的 uuid 覆寫鎖定11.1.1；npm audit 0 vulnerabilities。採登入後伺服器解析，不送往第三方服務。
+- POST /api/excel/read、POST /api/excel/write；4MB壓縮檔、32MB解壓、1萬筆、64欄及30萬格限制。拒絕巨集、加密、外部活頁簿連結、超限檔案與公式（先貼上為值）。司機ID及路線文字保留前導零。
+- 訂單Excel範本、匯入、按日期匯出xlsx；既有CSV保持相容。排班、每日任務、路線與車行對照加入xlsx入口。
+- Google來源讀取：公司回填、包時、名冊、出勤、路線後台改為每60分鐘；服務啟動保留原有錯開讀取，免費服務休眠期間不保證準點。
+- LINE事件、資料庫異動通知、Google寫入佇列仍即時／短間隔處理，不故意延遲1小時。
+- 名冊與出勤手動「立即更新」先讀Sheets，再排入平台輸出；公司路線、公司回填、包時保留既有立即更新入口。
+- 新增 POST /api/operation-sources/pull（管理員），僅允許drivers/vehicles/attendance，沿用版本衝突保護。

@@ -44,7 +44,7 @@ async function handle(db,event,eventId){
  await db.query('UPDATE extra_transport_slots SET completed_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=$1',[r.id]);
  }else{
  if(!r.driver_id)return '此車位尚未接取，不需要退單。';if(!m[3]?.trim()||m[3].length>500)return '請填寫退單原因（1～500字）。';
- if(r.checked_in_at)return '此追加車位已報到，請聯絡調度覆核交接；尚未取消報到。';
+ if(r.checked_in_at)return '此追加車位已報到，請聯絡調度／主管覆核交接；尚未取消報到。';
  await db.query("UPDATE extra_transport_slots SET driver_id=NULL,driver_code='',accepted_at=NULL,updated_at=clock_timestamp() WHERE id=$1",[r.id]);
  }
  await db.query('INSERT INTO extra_transport_history(slot_id,demand_id,action,actor,detail) VALUES($1,$2,$3,$4,$5)',[r.id,r.demand_id,m[1],driver.publicCode,JSON.stringify({eventId,beforeDriver:r.driver_code,beforeAccepted:r.accepted_at,beforeCheckin:r.checked_in_at,reason:m[1]==='退趟'?m[3]:''})]);
