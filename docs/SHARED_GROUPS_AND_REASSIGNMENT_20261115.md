@@ -73,3 +73,17 @@ server/lineDriverDirectory.js、server/sharedLineGroups.js、server/tripFleetCha
 - 新檔server/personnelSources.js、server/personnelSourceModel.js、server/migrations/032_personnel_sources.sql、public/personnelSources.js、server/tests/personnel-source-model.test.js。
 
 新版Excel訂單範本與Excel匯出不再顯示每站件數，沿用舊資料欄位以保留歷史資料；新匯入只以車趟作業，不把舊數量當作計價。CSV舊格式仍相容。匯入先預覽，第二次明確確認才寫入。
+
+## 使用公司Google本人帳號（依使用者最新選擇）
+- 使用者選擇本人帳號讀取，因此未新增公司來源分享權限。先前「私人維護快照」為提案，未另行建立或宣稱公司來源已自動更新。
+- 033新增Google OAuth用戶端、一次性狀態及連接資料表，秘密資料不列入營運Sheets或稽核內容。
+- 本平台只請求openid、email與spreadsheets.readonly。授權綁定wayanhuang@fxgco.com，含PKCE、nonce、瀏覽器HttpOnly/SameSite cookie與10分鐘單次state。
+- 後台「Google來源帳號」匯入Web OAuth JSON後由本人登入Google授權；不能直接沿用聊天Google連接或代用服務帳戶JSON。未完成前明示未連接。
+- 回呼網址預設 https://wayan-line-staging.onrender.com/api/google-sources/callback；本機需登錄與開啟頁面一致的127.0.0.1或localhost網址。
+- Secret及refresh token用AES-256-GCM加密。可用WAYAN_GOOGLE_SOURCE_TOKEN_KEY獨立測試金鑰，否則從32字以上的既有測試JWT secret用HKDF派生不同用途的金鑰；換金鑰需重新連接，不複製正式Secret。
+- GET /api/google-sources/status、POST /client、POST /begin、DELETE /connection管理員限定；GET /callback以一次性state、瀏覽器cookie與GoogleID token驗證。
+- 只允許既定來源清單的GET讀取，公司原表不會寫入；私人營運Sheets仍由獨立測試帳戶寫入。授權失效會提示重新連接，不偽報同步成功。
+- 034新增共同群組單次設定碼與通知來源車隊欄位；設定碼僅存hash、10分鐘有效，Webhook入庫及活動紀錄隱藏代碼。
+- 各車隊已綁定通知群可自動擷取爆量／罰款草稿，明確停用的來源群仍停用；大群組只按允許車隊及橘黑箱分類操作。通知來源車隊與實際責任認定分開。
+- 共享大群組可使用唯一的路線編號，若同路線多筆，僅列車隊與完整任務碼供選擇，不公開完整站點。
+- 新檔server/googleSourceCrypto.js、server/googleSourceOAuth.js、server/sourceGoogle.js、server/routes/googleSources.js、public/googleSources.js、server/tests/google-source-crypto.test.js、server/tests/google-source-oauth.test.js。

@@ -118,6 +118,7 @@ app.use('/api/penalty-rules',require('./routes/penaltyRules'));
 app.use('/api/penalty-cases',require('./routes/penaltyCases'));
 app.use('/api/store-delivery',require('./routes/storeDelivery'));
 app.use('/api/shopee-live',require('./routes/shopeeLive'));
+app.use('/api/google-sources',require('./routes/googleSources'));
 app.use('/api/excel',require('./routes/excelFiles'));
 app.use('/api/source-catalog',require('./routes/sourceCatalog'));
 app.use('/api/pickup-routes',require('./routes/pickupRoutes'));

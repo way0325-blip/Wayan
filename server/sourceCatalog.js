@@ -80,6 +80,7 @@ function parse(kind,rows){
 // Read only the pinned workbook and permitted columns. Password/account/identity-number columns are never requested.
 async function readSource(kind,env=process.env,fetcher=fetch){
  const spec=SPECS[kind];if(!spec)throw new Error('來源種類無效');const sourceId=['NB','FN','WB','support'].includes(kind)?ROUTE_SOURCE_ID:SOURCE_ID;
+ if(env===process.env&&await require('./googleSourceOAuth').connected())return readSourceData(kind,spec,suffix=>require('./googleSourceOAuth').google(sourceId+suffix));
  const email=env.WAYAN_GOOGLE_CLIENT_EMAIL,key=env.WAYAN_GOOGLE_PRIVATE_KEY?.replace(/\\n/g,'\n');
  if(!email||!key)throw new Error('尚未設定測試 Google 讀取授權');
  const now=Math.floor(Date.now()/1000),payload=[{alg:'RS256',typ:'JWT'},{iss:email,scope:'https://www.googleapis.com/auth/spreadsheets.readonly',aud:'https://oauth2.googleapis.com/token',iat:now,exp:now+3600}].map(x=>Buffer.from(JSON.stringify(x)).toString('base64url')).join('.');
@@ -87,6 +88,9 @@ async function readSource(kind,env=process.env,fetcher=fetch){
  const auth=await fetcher('https://oauth2.googleapis.com/token',{method:'POST',signal:AbortSignal.timeout(10000),headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'urn:ietf:params:oauth:grant-type:jwt-bearer',assertion})});
  if(!auth.ok)throw new Error('Google 讀取授權失敗');const token=(await auth.json()).access_token;if(!token)throw new Error('Google 讀取授權失敗');
  const get=async suffix=>{const r=await fetcher('https://sheets.googleapis.com/v4/spreadsheets/'+sourceId+suffix,{signal:AbortSignal.timeout(15000),headers:{Authorization:'Bearer '+token}});if(!r.ok)throw new Error(r.status===403||r.status===404?'請將來源試算表以檢視者分享給測試服務帳戶':'Google 來源讀取失敗');return r.json();};
+ return readSourceData(kind,spec,get);
+}
+async function readSourceData(kind,spec,get){
  const meta=await get('?fields=sheets.properties');
  const sheet=meta.sheets?.find(s=>s.properties.sheetId===spec.sheetId&&s.properties.title===spec.name)?.properties;if(!sheet)throw new Error('來源分頁名稱或ID變更，請重新核對');const end=Math.min(spec.end,sheet.gridProperties?.rowCount||spec.end);if((sheet.gridProperties?.rowCount||0)>spec.end)throw new Error('來源列數超過已核對上限，請調整匯入範圍後重試');
  const headerParams=new URLSearchParams({valueRenderOption:'FORMATTED_VALUE'});

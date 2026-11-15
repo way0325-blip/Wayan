@@ -17,6 +17,7 @@ async function handleEvent(db, event, id) {
   await require('./lineGroups').observeGroup(db,event);
   if (event.type === 'join') return '已加入 Wayan。車隊群組請向管理員取得一次性代碼，在群組輸入「車隊群組綁定 代碼」。司機本人請私訊機器人綁定。';
   if (event.type !== 'message' || event.message?.type !== 'text') return null;
+  const sharedBind=await require('./sharedLineGroups').bindCode(db,event);if(sharedBind!==null)return sharedBind;
   const penaltyDraft=await require('./penaltyMessageIntake').capture(db,event,id);if(penaltyDraft!==null)return penaltyDraft;
   const capturedDemand=await require('./extraDemands').capture(db,event,id);if(capturedDemand!==null)return capturedDemand;
   event={...event,message:{...event.message,text:require('./botCommands').normalize(event.message.text)}};
@@ -95,7 +96,7 @@ async function processEvent(id) {
       if (!row || row.status==='processed') return null;
       const reply=await handleEvent(db,row.payload,id);
       const payload=structuredClone(row.payload);
-      if (/^\s*(?:綁定|車隊群組綁定)\s+/.test(payload.message?.text || '')) payload.message.text='[綁定碼已隱藏]';
+      if (/^\s*(?:綁定|車隊群組綁定|作業群組設定)\s+/.test(payload.message?.text || '')) payload.message.text='[綁定碼已隱藏]';
       await db.query(`UPDATE line_events SET status='processed',attempts=attempts+1,processed_at=NOW(),reply_text=$2,
         payload=$3,error_code=NULL,delivery_status=$4 WHERE event_id=$1`,[id,reply,payload,reply && row.payload.replyToken?'pending':'skipped']);
       return {reply,token:row.payload.replyToken};

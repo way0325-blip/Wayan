@@ -2,12 +2,12 @@ const {audit}=require('./transaction');
 const {todayInTaipei}=require('./dates');
 async function capture(db,event,eventId){
  if(event.source?.type!=='group'||event.message?.type!=='text')return null;
- if(!(await db.query('SELECT 1 FROM line_demand_sources WHERE group_id=$1 AND enabled',[event.source.groupId])).rowCount)return null;
+ const setting=(await db.query('SELECT enabled FROM line_demand_sources WHERE group_id=$1',[event.source.groupId])).rows[0],fleet=(await db.query("SELECT g.fleet_id,f.name FROM line_fleet_groups g JOIN partner_fleets f ON f.id=g.fleet_id WHERE g.group_id=$1 AND f.status='啟用'",[event.source.groupId])).rows[0];if(setting?!setting.enabled:!fleet)return null;
  const parsed=require('./extraDemandModel').parse(event.message.text,Number(todayInTaipei().slice(0,4)));
  if(!parsed.rows.length)return null;if(parsed.rows.length>30||parsed.issues.length)return '追加需求日期、時段或車數需要核對，尚未建立；請由調度在平台確認。';
- for(const [index,r] of parsed.rows.entries())await db.query('INSERT INTO extra_transport_demands(source_event_id,source_group_id,source_index,service_date,departure_time,task_name,business_scope,required_trucks,driver_due_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(source_event_id,source_index) DO NOTHING',[eventId,event.source.groupId,index,r.date,r.time,r.name,r.business,r.count,parsed.deadline||null]);
+ for(const [index,r] of parsed.rows.entries())await db.query('INSERT INTO extra_transport_demands(source_event_id,source_group_id,source_index,service_date,departure_time,task_name,business_scope,required_trucks,driver_due_at,source_fleet_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(source_event_id,source_index) DO NOTHING',[eventId,event.source.groupId,index,r.date,r.time,r.name,r.business,r.count,parsed.deadline||null,fleet?.fleet_id||null]);
  await audit(db,{username:'LINE需求擷取',role:'system'},'擷取追加需求草稿','追加需求',eventId,parsed.rows.length+'筆；未派車');
- return '已擷取追加需求 '+parsed.rows.length+' 筆／共 '+parsed.rows.reduce((n,r)=>n+r.count,0)+' 車，待調度確認車隊與路線；尚未派車。';
+ return (fleet?.name?'【'+fleet.name+'】\n':'')+'已擷取追加需求 '+parsed.rows.length+' 筆／共 '+parsed.rows.reduce((n,r)=>n+r.count,0)+' 車，待調度確認車隊與路線；尚未派車。';
 }
 async function handle(db,event,eventId){
  const text=String(event.message?.text||''),m=text.match(/^(接取|車趟報到|車趟狀態|退趟|完成|車趟異常)\s+E0*([1-9]\d{0,14})(?:\s+([\s\S]+))?$/);if(!m)return null;

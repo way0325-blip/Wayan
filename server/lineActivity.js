@@ -1,5 +1,5 @@
 const crypto=require('node:crypto');
-const isBinding=text=>/^\s*(?:車隊群組綁定|綁定)\s/.test(text);
+const isBinding=text=>/^\s*(?:車隊群組綁定|綁定|作業群組設定)\s/.test(text);
 async function recordActivity(db,event,id,resolvedFleetId){
   const group=event.source?.groupId;if(event.source?.type!=='group'||typeof group!=='string')return;
   if(event.type==='unsend'&&typeof event.unsend?.messageId==='string'){
