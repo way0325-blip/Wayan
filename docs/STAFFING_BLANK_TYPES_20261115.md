@@ -30,3 +30,5 @@ public/unifiedSync.js提供全站「立即同步並更新畫面」，依序呼�
 部分來源錯誤仍執行後續來源，保留逐項結果並明確顯示未完整更新；整批成功後再重新載入畫面，不改所選日期／週期。避免連點重複同步，登出清除結果並停止後續步驟。原分散來源更新按鈕收起，查詢／匯入／派車操作不變。
 自動來源讀取沿用server/syncPolicy.js的60分鐘，服務運行期間執行；本機／雲端休眠期間不保證整點執行。LINE事件及資料異動的Sheets佇列不被延遲成每小時。無新增付費服務、API或資料表；瀏覽器重新整理本身不會觸發外部寫入。
 本機統一同步UI12項成功0失敗。新增／修改public/unifiedSync.js、public/index.html、public/personnelSources.js、public/staffingSync.js及本文件。
+
+統一按鈕另將路線後台、出勤與全營運Google輸出排入既有同步佇列；明確顯示排隊中，不將queued回覆當作已送達。共10個處理步驟，來源失敗不阻斷後續。UI13項成功0失敗；public/routeBackoffice.js的舊60秒提示同步改為每1小時。
