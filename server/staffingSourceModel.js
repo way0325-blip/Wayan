@@ -7,7 +7,7 @@ function parse(source,values,start){
  if(cols.length!==7||new Set(cols.map(x=>x.date)).size!==7)fail('來源尚未包含本週完整七天');
  const rows=[],issues=[];
  values.slice(7).forEach((r,index)=>{const raw=String(r?.[0]??'').trim();if(!raw)return;if(raw==='備援')return;const m=raw.match(/^([A-Z]+-\d{2}-\d+(?:-\d+)?)(.*)$/);if(!m){issues.push({fleet:source.fleet,row:index+8,route:raw,reason:'路線格式待核對'});return;}
- for(const col of cols){const driver=String(r[col.i]??'').trim();if(driver.length>100||/[\r\n\0]/.test(driver))fail('司機欄位格式錯誤');rows.push({date:col.date,route:m[1],raw,suffix:m[2],fleet:source.fleet,driver,sourceId:source.id,row:index+8,col:col.i+1});}});
+ for(const col of cols){const driver=String(r[col.i]??'').trim();if(driver.length>100||/[\r\n\0]/.test(driver))fail('司機欄位格式錯誤');rows.push({date:col.date,route:m[1],sourceType:String(r[1]??'').trim(),raw,suffix:m[2],fleet:source.fleet,driver,sourceId:source.id,row:index+8,col:col.i+1});}});
  return {rows,issues};
 }
 function partition(rows){const map=new Map();for(const r of rows){const k=r.date+'|'+r.route;const list=map.get(k)||[];list.push(r);map.set(k,list);}const accepted=[],issues=[];for(const list of map.values()){if(list.length>1){for(const r of list)issues.push({...r,reason:'同日同路線重複，未自動選擇來源'});}else accepted.push(list[0]);}return {accepted,issues};}
