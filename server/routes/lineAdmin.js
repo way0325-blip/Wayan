@@ -7,6 +7,16 @@ const {codeHash,processEvent}=require('../lineWorkflow');
 const {isConfigured}=require('../line');
 const router=express.Router();
 router.use(requireAuth,requireRole('admin'));
+router.get('/drivers',async(req,res,next)=>{
+ try {
+  const {SOURCE_ID}=require('../sourceCatalog');
+  const batch=(await pool.query('SELECT records,created_at FROM source_catalog_batches WHERE source_id=$1 AND kind=$2 ORDER BY id DESC LIMIT 1',[SOURCE_ID,'drivers'])).rows[0];
+  const drivers=(await pool.query('SELECT id,name,roster_driver_id FROM drivers WHERE roster_source_id IS NULL OR roster_source_id=$1',[SOURCE_ID])).rows;
+  const bindings=(await pool.query('SELECT driver_id FROM line_driver_bindings')).rows;
+  const records=require('../lineDriverDirectory').project(batch?.records||[],drivers,bindings);
+  res.set('Cache-Control','no-store').json({records,total:records.length,updatedAt:batch?.created_at||null});
+ }catch(e){next(e);}
+});
 router.get('/status',async(req,res,next)=>{
   try {
     const bindings=(await pool.query('SELECT b.driver_id,d.name,b.bound_at FROM line_driver_bindings b JOIN drivers d ON d.id=b.driver_id ORDER BY b.bound_at DESC')).rows;

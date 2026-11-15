@@ -11,6 +11,19 @@ const router=express.Router();
 const {pool,logAction}=transactionalRouter(router,rawPool,870033);
 router.use(requireAuth,requireRole('admin','dispatcher'));
 const admin=requireRole('admin');
+router.get('/shared-groups',admin,async(req,res,next)=>{try{res.set('Cache-Control','no-store').json((await pool.query('SELECT group_id,fleet_id,business_scope FROM line_shared_group_fleets ORDER BY group_id,fleet_id')).rows);}catch(e){next(e);}});
+router.put('/shared-groups',admin,async(req,res,next)=>{try{
+ const {groupId,fleetIds,businessScope}=req.body||{};
+ if(!['all','orange','black'].includes(businessScope))return res.status(400).json({error:'請選擇橘箱、黑箱或全部任務'});
+ if(typeof groupId!=='string'||!/^C[0-9a-f]{32}$/i.test(groupId)||!Array.isArray(fleetIds)||fleetIds.length>100||fleetIds.some(x=>typeof x!=='string'||x.length>100)||new Set(fleetIds).size!==fleetIds.length)return res.status(400).json({error:'請選擇群組及不重複的車隊，最多100家'});
+ const g=(await pool.query('SELECT bot_present FROM line_group_registry WHERE group_id=$1 FOR UPDATE',[groupId])).rows[0];
+ if(!g?.bot_present)return res.status(409).json({error:'Bot尚未加入或未收到此群組有效事件'});
+ if((await pool.query('SELECT 1 FROM line_fleet_groups WHERE group_id=$1',[groupId])).rowCount)return res.status(409).json({error:'此群組已綁定單一車隊，請選擇另一個共同作業群組'});
+ if(fleetIds.length&&(await pool.query("SELECT id FROM partner_fleets WHERE id=ANY($1::text[]) AND status='啟用' AND NOT is_simulated",[fleetIds])).rowCount!==fleetIds.length)return res.status(400).json({error:'請只選擇啟用中的正式車隊'});
+ await pool.query('DELETE FROM line_shared_group_fleets WHERE group_id=$1',[groupId]);
+ for(const id of fleetIds)await pool.query('INSERT INTO line_shared_group_fleets(group_id,fleet_id,created_by,business_scope) VALUES($1,$2,$3,$4)',[groupId,id,req.user.username,businessScope]);
+ await logAction(req,'設定共同作業群組','LINE',groupId,JSON.stringify({fleetIds,businessScope}));res.json({saved:true});
+}catch(e){next(e);}});
 router.get('/activity-status',async(req,res,next)=>{try{
   res.set('Cache-Control','no-store').json((await pool.query(`SELECT f.id,f.name,f.status,g.group_id IS NOT NULL AS bound,r.label AS group_name,r.bot_present,r.last_seen_at,
     (SELECT MAX(a.received_at) FROM fleet_line_activity a WHERE a.fleet_id=f.id) AS last_activity

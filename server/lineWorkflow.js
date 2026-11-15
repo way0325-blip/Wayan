@@ -17,6 +17,8 @@ async function handleEvent(db, event, id) {
   await require('./lineGroups').observeGroup(db,event);
   if (event.type === 'join') return '已加入 Wayan。車隊群組請向管理員取得一次性代碼，在群組輸入「車隊群組綁定 代碼」。司機本人請私訊機器人綁定。';
   if (event.type !== 'message' || event.message?.type !== 'text') return null;
+  const sharedReply=await require('./sharedLineGroups').handle(db,event,id);
+  if(sharedReply!==null)return sharedReply;
   const fleetReply=await handleFleetGroupEvent(db,event,id);
   if(fleetReply!==null) return fleetReply;
   if (event.source?.type !== 'user' || !event.source.userId) return /^(我的任務|待派車|已完成|統計|到站|完成|異常|事故|我的路線|接取|車趟報到|退趟|改報)(?:\s|$)/.test(String(event.message.text||'').trim())?'為保護派車資料，請私訊 Wayan Bot 操作。':null;

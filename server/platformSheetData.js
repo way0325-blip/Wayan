@@ -2,6 +2,8 @@ const {hash,SOURCE_ID}=require('./sourceCatalog');
 const MAX_ROWS=20000,MAX_CELLS=1500000;
 const view=(name,table,spec,where='')=>({name:'平台_'+name,table,columns:spec.split('|').map(x=>x.split(':')),where});
 const views=[
+ view('車趟改派歷程','delivery_fleet_changes','id:紀錄ID|trip_id:任務ID|previous_fleet_id:原執行車隊ID|next_fleet_id:新執行車隊ID|source_fleet_name:來源車行|reason:改派原因|actor:操作人|changed_at:改派時間'),
+ view('共同作業群組','line_shared_group_fleets','group_id:群組ID|fleet_id:允許車隊ID|business_scope:任務類型|created_by:設定人|created_at:設定時間'),
  view('排班週期','staffing_cycles','start_date:週期開始|end_date:週期結束|weekly_due_date:整週截止日|created_by:建立人|created_at:建立時間'),
  view('排班異動歷程','staffing_history','id:紀錄ID|demand_id:需求ID|actor:操作人|action:異動|before_data:原資料|after_data:新資料|at:時間'),
  view('自有司機','drivers','id:司機編號|name:姓名|phone:電話|license:證照|status:狀態|roster_driver_id:雲端司機ID'),
