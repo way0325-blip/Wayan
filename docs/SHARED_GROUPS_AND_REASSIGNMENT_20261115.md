@@ -54,3 +54,11 @@ server/lineDriverDirectory.js、server/sharedLineGroups.js、server/tripFleetCha
 - LINE事件、資料庫異動通知、Google寫入佇列仍即時／短間隔處理，不故意延遲1小時。
 - 名冊與出勤手動「立即更新」先讀Sheets，再排入平台輸出；公司路線、公司回填、包時保留既有立即更新入口。
 - 新增 POST /api/operation-sources/pull（管理員），僅允許drivers/vehicles/attendance，沿用版本衝突保護。
+
+## 回填對帳及新路線來源
+- 原始格數／已填ID／空白／本次已套用／待核對未套用／重複格數分開，不把「已填ID」當成「已核對可派車」。不自動合併有衝突的來源列，也不刪除資料。
+- 每日任務顯示來源兩日格數、區間外排除格數及可見需求，滿足來源格數＝區間外＋可見（格式異常另列待核對）。已知路線但時間不明可勾選，建趟前必須逐筆補上有效時間。
+- 路線網路讀取改為1fgzigNTy_Vx-SMuu-affuOZ-RNquBbs0AZeMRxOHZf0；保留舊SOURCE_ID作內部名冊、歷史與綁定命名空間，未改寫來源公司試算表。
+- 三個主路線表動態依已驗證分頁界限讀取，上限4000列，避免WB新增列被舊3396列截斷。
+- 支援車趟來源一併核對。2026-11-15實讀為6/28的18筆，0X占位碼、非數字站序且缺門店地址，列為待核對，不假造正式路線。
+- 新檔server/routeSupportModel.js；另修改server/sourceCatalogBootstrap.js、server/sourceCatalog.js、server/dailyFleetTasks.js、server/staffingModel.js、server/staffingSync.js及對應前端與測試。
