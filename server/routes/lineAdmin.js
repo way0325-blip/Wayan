@@ -17,6 +17,7 @@ router.get('/drivers',async(req,res,next)=>{
   res.set('Cache-Control','no-store').json({records,total:records.length,updatedAt:batch?.created_at||null});
  }catch(e){next(e);}
 });
+router.get('/quota',async(req,res)=>{try{res.set('Cache-Control','no-store').json(await require('../line').getMessageQuota());}catch(e){res.status(e.code==='LINE_NOT_CONFIGURED'?409:502).json({error:e.message});}});
 router.get('/status',async(req,res,next)=>{
   try {
     const bindings=(await pool.query('SELECT b.driver_id,d.name,b.bound_at FROM line_driver_bindings b JOIN drivers d ON d.id=b.driver_id ORDER BY b.bound_at DESC')).rows;

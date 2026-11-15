@@ -73,7 +73,8 @@
   async function loadBot() {
     if(!active || !isAdmin()) return;
     try {
-      const [s,list]=await Promise.all([api('/api/line/admin/status'),api('/api/line/admin/drivers')]);
+      const [s,list,q]=await Promise.all([api('/api/line/admin/status'),api('/api/line/admin/drivers'),api('/api/line/admin/quota').catch(e=>({error:e.message}))]);
+      set('botQuota',q.error?q.error:'API本月上限 '+(q.limit??'依LINE方案')+'／已計量 '+q.used+'／剩餘 '+(q.remaining??'依方案')+'｜'+new Date(q.retrievedAt).toLocaleString('zh-TW',{timeZone:'Asia/Taipei'}));
       set('botConfigured',s.configured?'測試頻道已設定；仍需實際手機驗收':'尚未設定測試頻道金鑰');
       botDirectory=list.records;renderBotDrivers();
       el('botBindings').innerHTML=s.bindings.map(b=>`<div class="incident-row">${escape(b.name)} · ${escape(b.driver_id)} <button class="action secondary small" data-unbind="${escape(b.driver_id)}">解除綁定</button></div>`).join('')||'<div class="empty">尚無司機綁定</div>';

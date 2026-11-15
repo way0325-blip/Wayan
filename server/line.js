@@ -132,7 +132,15 @@ async function pushDispatchList(orders, drivers, vehicles, opts = {}) {
   return { sentTo, text };
 }
 
+let quotaCache=null;
+async function getMessageQuota(fetcher=fetch){
+ if(!isConfigured())throw Object.assign(Error('LINE測試頻道尚未設定'),{code:'LINE_NOT_CONFIGURED'});
+ if(fetcher===fetch&&quotaCache&&Date.now()-quotaCache.at<60000)return quotaCache.data;
+ const get=async path=>{const r=await fetcher(API_BASE+path,{method:'GET',signal:AbortSignal.timeout(4000),headers:{Authorization:'Bearer '+ACCESS_TOKEN}});if(!r.ok)throw Object.assign(Error('LINE額度讀取失敗'),{code:'LINE_QUOTA_READ_FAILED'});return r.json();};
+ const [quota,usage]=await Promise.all([get('/message/quota'),get('/message/quota/consumption')]);const limit=quota.type==='limited'&&Number.isFinite(quota.value)?quota.value:null;if(!Number.isFinite(usage.totalUsage))throw Object.assign(Error('LINE額度資料格式待核對'),{code:'LINE_QUOTA_FORMAT'});const data={type:quota.type,limit,used:usage.totalUsage,remaining:limit===null?null:Math.max(0,limit-usage.totalUsage),retrievedAt:new Date().toISOString(),notice:'這是LINE API本月上限，付費方案可能包含加購上限；Reply API不計入，主動Push依收件人數計量。'};if(fetcher===fetch)quotaCache={at:Date.now(),data};return data;
+}
 module.exports = {
+  getMessageQuota,
   isConfigured,
   verifySignature,
   replyMessage,

@@ -378,7 +378,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
   </section>
   <section id="lineControl" class="page">
       <div class="control-hero"><div><span class="eyebrow">WAYAN / LINE DRIVER ASSISTANT</span><h1>司機的行動工作入口</h1><p>綁定身分、查詢任務、回報現場狀況。</p></div><button class="action secondary" id="botRefresh">更新狀態</button></div>
-      <p id="botError" class="control-error" role="alert"></p>
+      <div class="panel"><h3>LINE 本月訊息額度</h3><p id="botQuota" role="status">按更新狀態讀取。</p><p class="hint">自動回覆使用Reply API；主動發布任務使用Push API。群組推播按收件人數計量，這裡的上限不等於付費方案的免費額度。</p><a class="action secondary" href="https://manager.line.biz/" target="_blank" rel="noopener noreferrer">開啟LINE方案與帳務設定</a></div><p id="botError" class="control-error" role="alert"></p>
       <div class="control-split"><div class="panel"><h3>綁定司機</h3><p id="botConfigured" role="status">等待檢查</p><ol class="bot-steps"><li>選擇司機，產生十分鐘有效的一次性綁定碼。</li><li>將代碼私下交給本人，請司機加測試官方帳號好友。</li><li>司機私訊輸入「綁定 代碼」，完成後即可查詢自己的任務。</li></ol><div class="control-toolbar"><input id="botDriverSearch" type="search" placeholder="搜尋司機 ID、姓名、倉別" aria-label="搜尋司機"><select id="botDriverStatus" aria-label="綁定狀態"><option value="">全部司機</option><option value="unbound">未綁定</option><option value="bound">已綁定</option><option value="review">待核對</option></select><select id="botDriver" aria-label="選擇綁定司機"></select><button class="action" id="botGenerate">產生綁定碼</button></div><p id="botDirectoryCount" class="hint" role="status"></p><p id="botCode" class="control-code control-notice" role="status"></p></div>
       <div class="panel"><h3>統一 Bot 指令</h3><p class="control-notice">接單 任務編號 司機ID
 報到 任務編號
