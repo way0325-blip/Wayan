@@ -34,7 +34,7 @@
     // Update operational lists without interrupting an open form or another module.
     if (!reloadTimer) reloadTimer=setTimeout(()=>{
       reloadTimer=null;
-      if (active && !document.querySelector('.modal:not(.hidden)') && el('dashboard').classList.contains('active')) loadAll().catch(()=>{});
+      if (active && !document.querySelector('.modal:not(.hidden)') && el('dashboard').classList.contains('active')) window.WayanViewUpdates?.request('dashboard-lists',()=>loadAll().catch(()=>{}));
     },30000);
   }
   async function connect() {

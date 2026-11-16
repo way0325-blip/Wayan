@@ -42,7 +42,7 @@
       el('activityUpdated').textContent='更新於 '+date(new Date());el('activityError').textContent='';
     }catch(e){if(stamp===generation)el('activityError').textContent=e.message;}finally{if(more)loadingMore=false;}
   }
-  function schedule(){if(timer)return;timer=setTimeout(()=>{timer=null;if(!document.hidden&&el('fleetOps').classList.contains('active'))load();},1500);}
+  function schedule(){if(timer)return;timer=setTimeout(()=>{timer=null;if(!document.hidden&&el('fleetOps').classList.contains('active')){if(window.WayanViewUpdates?.working())window.WayanViewUpdates.request('line-chat',load);else load();}},1500);}
   document.addEventListener('click',event=>{const b=event.target.closest('button');if(!b)return;if(b.dataset.page==='fleetOps'||b.id==='activityRefresh'||b.id==='fleetOpsRefresh')load();if(b.id==='activityMore'&&cursor)load(true);if(b.hasAttribute('data-chat-fleet')){selected=b.dataset.chatFleet;el('activityFleet').value=selected;load();}if(b.dataset.chatTarget)focus(b.dataset.chatTarget);});
   el('activityFleet').addEventListener('change',()=>{selected=el('activityFleet').value;load();});el('chatDate').addEventListener('change',()=>load());document.addEventListener('wayan:refresh',schedule);document.addEventListener('visibilitychange',schedule);setInterval(schedule,30000);
 })();
