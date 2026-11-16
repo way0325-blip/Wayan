@@ -6,7 +6,7 @@ async function buildTrip(db,kind,b,actor,logAction,context={}){
 if(!['NB','FN','WB'].includes(kind)||!isValidDateKey(b.serviceDate)||b.verified!==true||typeof b.routeCode!=='string'||typeof b.pickupPointId!=='string')throw Object.assign(new Error('請核對門店、選有效日期、出發時間；固定路線以趟計價'),{status:400});
  await db.query('SELECT pg_advisory_xact_lock(870033)');
  const batch=await require('./routeCarriers').attach(db,await latest(db,kind));if(!batch||String(batch.id)!==String(b.batchId))throw Object.assign(new Error('路線版本已變更，請重新載入'),{status:409});
- const route=batch.records.find(r=>r.routeCode===b.routeCode);if(!route||route.problems.length)throw Object.assign(new Error('路線不存在或尚有待核對問題，整條路線不拆除停靠站'),{status:409});
+ const route=batch.records.find(r=>r.routeCode===b.routeCode);if(!route||route.problems.filter(p=>!/時段|時間|出車/.test(p)).length)throw Object.assign(new Error('路線不存在或尚有待核對問題，整條路線不拆除停靠站'),{status:409});
  b={...b,departureTime:b.departureTime||require('../public/routeCatalogGroups').timeWindow(route.timeWindow).start};if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(b.departureTime))throw Object.assign(new Error('請核對實際出發時間或來源時段'),{status:400});
  if(route.routeCode.length>31)throw Object.assign(new Error('路線編號過長，加入日期後超出LINE報到代碼限制，請先調整來源編號'),{status:400});
  const requested=b.stopOrder===undefined?route.stops.map(s=>s.sequence):b.stopOrder;

@@ -11,7 +11,7 @@ async function preview(db,rows){
   const key=serviceDate+':'+routeCode;if(seen.has(key))reject('日期與路線重複：'+key);seen.add(key);
   if(!batches.has(kind))batches.set(kind,require('./sourceCatalog').projectRegions((await db.query('SELECT * FROM source_catalog_batches WHERE source_id=$1 AND kind=$2 ORDER BY id DESC LIMIT 1',[SOURCE_ID,kind])).rows[0]));
   const batch=batches.get(kind),route=batch?.records.find(x=>x.routeCode===routeCode),pickup=pickups.find(p=>p.id===pickupPointId);
-  if(!route||route.problems.length||route.routeCode.length>31)reject('第'+(index+1)+'列：路線未同步或尚待核對');
+  if(!route||route.problems.filter(p=>!/時段|時間|出車/.test(p)).length||route.routeCode.length>31)reject('第'+(index+1)+'列：路線未同步或尚待核對');
   const departureTime=String(r.departureTime||require('../public/routeCatalogGroups').timeWindow(route.timeWindow).start);if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(departureTime))reject('第'+(index+1)+'列：出發時間或來源時段待核對');
   if(!pickup||pickup.box_type!==route.boxType)reject('第'+(index+1)+'列：取貨點不存在或箱型不符');
   const fleetLink=await require('./dailyFleetLinks').resolve(db,{...r,routeCode,serviceDate},sourceBoards);if(fleetLink&&(fleetLink.category!==kind||fleetLink.routeUid!==require('./routeOverrides').uid(kind,route)))reject('第'+(index+1)+'列：來源路線性質或版本不同，請至對應路線流程處理');
