@@ -1,7 +1,7 @@
 (() => {
  const el=id=>document.getElementById(id),orders=el('orders'),demand=el('shopee');let mode='delivery',syncing=false;
  const delivery=document.createElement('div');delivery.id='shopeeUnifiedDelivery';delivery.setAttribute('role','tabpanel');while(orders.firstChild)delivery.append(orders.firstChild);orders.append(delivery);orders.append(demand);
- orders.insertAdjacentHTML('afterbegin',`<div class="panel" style="margin-bottom:18px"><h2>蝦皮店到店營運工作區</h2><div class="control-toolbar" role="tablist" aria-label="蝦皮工作區"><button id="shopeeUnifiedDeliveryTab" role="tab" aria-controls="shopeeUnifiedDelivery" class="action">車隊任務清單／報到</button><button id="shopeeUnifiedDemandTab" role="tab" aria-controls="shopee" class="action secondary">路線需求／任務派單</button></div><label>每日派車起始日（12:00～隔日08:00） <input id="shopeeUnifiedDate" type="date"></label> <button id="shopeeToday" class="action secondary">回到今天</button><span id="shopeeDayStatus" role="status" class="hint"></span><p class="hint">接單、路線合計需求、車隊分派、自有司機、LINE報到集中管理。兩個分頁共用日期及既有資料；港口歷史入口保留。</p></div>`);
+ orders.insertAdjacentHTML('afterbegin',`<div class="panel" style="margin-bottom:18px"><h2>蝦皮店到店營運工作區</h2><div class="control-toolbar" role="tablist" aria-label="蝦皮工作區"><button id="shopeeUnifiedDeliveryTab" role="tab" aria-controls="shopeeUnifiedDelivery" class="action">車隊任務清單／報到</button><button id="shopeeUnifiedDemandTab" role="tab" aria-controls="shopee" class="action secondary">路線需求／任務派單</button></div><label>每日派車日期（當日00:00～24:00） <input id="shopeeUnifiedDate" type="date"></label> <button id="shopeeToday" class="action secondary">回到今天</button><span id="shopeeDayStatus" role="status" class="hint"></span><p class="hint">接單、路線合計需求、車隊分派、自有司機、LINE報到集中管理。兩個分頁共用日期及既有資料；港口歷史入口保留。</p></div>`);
  const oldNav=document.querySelector('.nav-btn[data-page="shopee"]');oldNav.classList.add('hidden');oldNav.setAttribute('aria-hidden','true');oldNav.tabIndex=-1;
  el('deliveryDate').closest('label')?.classList.add('hidden');el('shopeeDate').classList.add('hidden');el('opsDate').closest('label')?.classList.add('hidden');
  const today=()=>WayanDispatchWindow.anchor();
@@ -12,11 +12,11 @@
  for(const id of ['deliveryDate','shopeeDate','opsDate'])el(id).addEventListener('change',()=>{if(!syncing)manualDate(el(id).value,false);});document.addEventListener('wayan:shopee-date',e=>manualDate(e.detail,true));
  const busy=()=>!!document.querySelector('.modal:not(.hidden)');
  const follower=WayanServiceDay.createFollower({read:()=>el('shopeeUnifiedDate').value,write:date=>{el('shopeeAllDates').checked=false;sync(date,true);},busy,dayOf:WayanDispatchWindow.anchor});
- function status(){el('shopeeDayStatus').textContent=follower.following?'每日12:00切換派車區間（台灣時間）':'保留指定日期／歷史紀錄';}
+ function status(){el('shopeeDayStatus').textContent=follower.following?'每日00:00切換當日任務（台灣時間）':'保留指定日期／歷史紀錄';}
  function manualDate(date,refresh){if(!date)return;follower.manual(date);sync(date,refresh);status();}
  const auxiliary=['chatDate','partnerDispatchDate'].map(id=>{const input=el(id);if(!input)return null;if(id==='partnerDispatchDate')input.value=WayanDispatchWindow.anchor();let changing=false;const day=WayanServiceDay.createFollower({read:()=>input.value,write:date=>{changing=true;try{input.value=date;input.dispatchEvent(new Event('change',{bubbles:true}));}finally{changing=false;}},busy,dayOf:id==='partnerDispatchDate'?WayanDispatchWindow.anchor:WayanServiceDay.taipeiDay});input.addEventListener('change',()=>{if(!changing)day.manual(input.value);});const button=document.createElement('button');button.type='button';button.className='action secondary';button.textContent='今天';button.title='依台灣時間回到今天並恢復每日切換';input.insertAdjacentElement('afterend',button);button.addEventListener('click',()=>day.today());return day;}).filter(Boolean);
  function checkDay(){if(typeof getToken==='function'&&!getToken())return;follower.tick();for(const day of auxiliary)day.tick();status();}
- el('shopeeToday').textContent='目前派車區間';el('shopeeToday').addEventListener('click',()=>{follower.today();status();});
+ el('shopeeToday').textContent='今天任務';el('shopeeToday').addEventListener('click',()=>{follower.today();status();});
  el('shopeeAllDates').addEventListener('change',()=>{if(el('shopeeAllDates').checked)follower.pause();else follower.manual(el('shopeeUnifiedDate').value);status();});
  window.addEventListener('focus',checkDay);document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkDay();});document.addEventListener('wayan:refresh',checkDay);
  setInterval(checkDay,30000);status();show('delivery');
