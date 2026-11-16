@@ -2,7 +2,7 @@ const crypto=require('node:crypto');
 const {SOURCE_ID,hash}=require('./sourceCatalog');
 const {isValidDateKey}=require('./dates');
 const latest=async(db,kind)=>require('./sourceCatalog').projectRegions((await db.query('SELECT * FROM source_catalog_batches WHERE source_id=$1 AND kind=$2 ORDER BY id DESC LIMIT 1',[SOURCE_ID,kind])).rows[0]);
-async function buildTrip(db,kind,b,actor,logAction){
+async function buildTrip(db,kind,b,actor,logAction,context={}){
 if(!['NB','FN','WB'].includes(kind)||!isValidDateKey(b.serviceDate)||b.verified!==true||typeof b.routeCode!=='string'||typeof b.pickupPointId!=='string')throw Object.assign(new Error('請核對門店、選有效日期、出發時間；固定路線以趟計價'),{status:400});
  await db.query('SELECT pg_advisory_xact_lock(870033)');
  const batch=await require('./routeCarriers').attach(db,await latest(db,kind));if(!batch||String(batch.id)!==String(b.batchId))throw Object.assign(new Error('路線版本已變更，請重新載入'),{status:409});
@@ -12,9 +12,10 @@ if(!['NB','FN','WB'].includes(kind)||!isValidDateKey(b.serviceDate)||b.verified!
  const requested=b.stopOrder===undefined?route.stops.map(s=>s.sequence):b.stopOrder;
  if(!Array.isArray(requested)||requested.length!==route.stops.length||new Set(requested).size!==requested.length||requested.some(n=>!Number.isInteger(n)||!route.stops.some(s=>s.sequence===n)))throw Object.assign(new Error('停靠順序必須包含全部原路線站點，不得重複或遺漏'),{status:400});
  const orderedStops=requested.map(n=>route.stops.find(s=>s.sequence===n));
+ const fleetLink=await require('./dailyFleetLinks').resolve(db,b,context.sourceBoards??=new Map());if(fleetLink&&(fleetLink.category!==kind||fleetLink.routeUid!==require('./routeOverrides').uid(kind,route)))throw Object.assign(new Error('來源路線性質或版本已變更，請重新同步'),{status:409});
  const key=hash([SOURCE_ID,kind,route.routeCode,b.serviceDate]),taskCode=b.serviceDate.replace(/-/g,'')+'-'+route.routeCode;
  const old=(await db.query('SELECT trip_id FROM source_catalog_trip_links WHERE source_id=$1 AND kind=$2 AND route_code=$3 AND service_date=$4',[SOURCE_ID,kind,route.routeCode,b.serviceDate])).rows[0];
- if(old){const trip=(await db.query('SELECT * FROM delivery_trips WHERE id=$1',[old.trip_id])).rows[0],existingStops=(await db.query('SELECT o.quantity,o.reference FROM delivery_orders o JOIN delivery_trip_stops s ON s.order_id=o.id WHERE s.trip_id=$1 ORDER BY s.stop_no',[old.trip_id])).rows;if(trip.status==='已取消'||trip.pickup_point_id!==b.pickupPointId||trip.departure_time!==b.departureTime||existingStops.some((s,i)=>s.reference!=='SRC-'+key.slice(0,24)+'-'+orderedStops[i]?.sequence)||existingStops.length!==orderedStops.length)throw Object.assign(new Error('此日此路線已有不同安排或取消紀錄，請先查看既有車趟，不能重複建立'),{status:409});return {tripId:old.trip_id,taskCode:trip.task_code,duplicate:true};}
+ if(old){const trip=(await db.query('SELECT * FROM delivery_trips WHERE id=$1',[old.trip_id])).rows[0],existingStops=(await db.query('SELECT o.quantity,o.reference FROM delivery_orders o JOIN delivery_trip_stops s ON s.order_id=o.id WHERE s.trip_id=$1 ORDER BY s.stop_no',[old.trip_id])).rows;if(fleetLink&&trip.fleet_id!==fleetLink.fleetId)throw Object.assign(new Error('此日此路線已指派其他車隊或尚未指派，請使用車隊調整功能，不自動覆蓋'),{status:409});if(trip.status==='已取消'||trip.pickup_point_id!==b.pickupPointId||trip.departure_time!==b.departureTime||existingStops.some((s,i)=>s.reference!=='SRC-'+key.slice(0,24)+'-'+orderedStops[i]?.sequence)||existingStops.length!==orderedStops.length)throw Object.assign(new Error('此日此路線已有不同安排或取消紀錄，請先查看既有車趟，不能重複建立'),{status:409});return {tripId:old.trip_id,taskCode:trip.task_code,duplicate:true};}
  const pickup=(await db.query('SELECT p.*,w.address AS warehouse_address FROM delivery_pickup_points p JOIN delivery_warehouses w ON w.id=p.warehouse_id WHERE p.id=$1 AND p.active AND w.active',[b.pickupPointId])).rows[0];
  if(!pickup||pickup.box_type!==route.boxType)throw Object.assign(new Error('取貨點箱型不符：N／F大園橘箱，W楊梅黑箱'),{status:400});
  const trip=(await db.query(`INSERT INTO delivery_trips(request_id,request_hash,warehouse_id,service_date,departure_time,note,created_by,warehouse_address,task_code,task_name,required_checkins,pickup_point_id,pickup_point_name,box_type,source_fleet_name) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,1,$11,$12,$13,$14) RETURNING *`,[crypto.randomUUID(),key,pickup.warehouse_id,b.serviceDate,b.departureTime,'來源路線範本；司機與車隊由調度彈性指派',actor.username,pickup.warehouse_address,taskCode,route.routeCode+' '+route.serviceType,pickup.id,pickup.name,pickup.box_type,route.sourceFleetName||''])).rows[0];
@@ -27,7 +28,8 @@ if(!['NB','FN','WB'].includes(kind)||!isValidDateKey(b.serviceDate)||b.verified!
   await db.query('INSERT INTO delivery_trip_stops(trip_id,order_id,stop_no,store_code,store_name,city,district,address,route_code) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[trip.id,order.id,index+1,store.code,stop.name,stop.city,stop.district,stop.address,route.routeCode]);
  }
  await db.query('INSERT INTO source_catalog_trip_links(source_id,kind,route_code,service_date,batch_id,trip_id) VALUES($1,$2,$3,$4,$5,$6)',[SOURCE_ID,kind,route.routeCode,b.serviceDate,batch.id,trip.id]);
+ if(fleetLink){const version=(await db.query("SELECT to_char(updated_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS version FROM delivery_trips WHERE id=$1",[trip.id])).rows[0].version;try{await require('./deliveryDispatch').assign(db,{reason:'依公司回填需求核對日期與路線後指派',items:[{tripId:String(trip.id),version,mode:'fleet',fleetId:fleetLink.fleetId,groupId:fleetLink.groupId}]},actor,(_actor,...args)=>logAction(...args));}catch(e){if(e.dispatchStatus)e.status=e.dispatchStatus;throw e;}}
  await logAction('來源路線建立車趟','蝦皮門店車趟',trip.id,`${route.routeCode} ${route.stops.length}站；來源批次${batch.id}；原站序${requested.join(',')}；尚未派車及發送LINE`);
- return {tripId:trip.id,taskCode:trip.task_code,stops:route.stops.length};
+ return {tripId:trip.id,taskCode:trip.task_code,stops:route.stops.length,...(fleetLink?{fleetId:fleetLink.fleetId,fleetName:fleetLink.fleetName,groupReady:fleetLink.groupReady}: {})};
 }
 module.exports={buildTrip};
