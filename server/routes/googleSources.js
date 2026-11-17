@@ -3,5 +3,5 @@ router.get('/callback',async(req,res)=>{try{const cookies=Object.fromEntries(Str
 router.use(requireAuth,requireRole('admin'));
 router.get('/status',async(req,res,next)=>{try{res.json(await oauth.status());}catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e);}});
 router.post('/client',async(req,res,next)=>{try{await oauth.saveClient(req.body,req.user);res.json({saved:true});}catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e);}});
-router.post('/begin',async(req,res,next)=>{try{const r=await oauth.begin(req.user);res.cookie(COOKIE,r.cookie,{httpOnly:true,secure:oauth.redirect().startsWith('https:'),sameSite:'lax',path:'/',maxAge:10*60*1000});res.json({url:r.url});}catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e);}});
+router.post('/begin',async(req,res,next)=>{try{const r=await oauth.begin(req.user,req.body?.cloudExcel===true);res.cookie(COOKIE,r.cookie,{httpOnly:true,secure:oauth.redirect().startsWith('https:'),sameSite:'lax',path:'/',maxAge:10*60*1000});res.json({url:r.url});}catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e);}});
 router.delete('/connection',async(req,res,next)=>{try{await oauth.disconnect(req.user);res.json({disconnected:true});}catch(e){next(e);}});module.exports=router;

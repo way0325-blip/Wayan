@@ -554,7 +554,7 @@ input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 2px 0 0;
         <button class="action" onclick="saveSettings()">儲存設定</button><span id="settingsMsg" class="ok-msg"></span>
       </div>
 
-      <div id="subGoogleSources" class="panel subpanel"><h3>用公司Google帳號讀取來源</h3><p>使用 wayanhuang@fxgco.com 本人唯讀授權，平台每1小時讀取已設定的來源；Google Sheets 營運紀錄的寫入仍使用原獨立測試服務帳戶。不要提供Google密碼。</p><p id="googleSourceStatus" role="status">載入連接狀態後開始設定。</p><button id="googleSourceReload" class="action secondary">更新狀態</button><button id="googleSourceConnect" class="action">連接公司Google帳號</button><button id="googleSourceDisconnect" class="action secondary">解除平台連接</button><details><summary>第一次設定Google OAuth</summary><ol><li>到<a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">Google Cloud 憑證設定</a>，選擇自己的測試專案。</li><li>建立「Web應用程式」OAuth用戶端，設定下方回呼網址；若應用程式為測試模式，加入公司帳號為測試使用者。</li><li>下載JSON後，在這裡選擇檔案。檔案只透過HTTPS送至平台加密保存，不貼到聊天、不放GitHub。</li></ol><label>回呼網址<input id="googleSourceRedirect" readonly></label><input id="googleSourceClientFile" type="file" accept=".json"><button id="googleSourceClientSave" class="action secondary">匯入Web OAuth設定</button></details><p id="googleSourceMessage" role="alert"></p></div>
+      <div id="subGoogleSources" class="panel subpanel"><h3>用公司Google帳號讀取來源</h3><p>使用 wayanhuang@fxgco.com 本人唯讀授權，平台每1小時讀取已設定的來源；Google Sheets 營運紀錄的寫入仍使用原獨立測試服務帳戶。不要提供Google密碼。</p><p id="googleSourceStatus" role="status">載入連接狀態後開始設定。</p><button id="googleSourceReload" class="action secondary">更新狀態</button><button id="googleSourceConnect" class="action">連接公司Google帳號</button><button id="googleSourceDriveConnect" class="action">授權華碩雲端Excel唯讀同步</button><p>華碩雲端Excel需另外取得Google Drive唯讀授權。Google同意畫面會列出雲端硬碟讀取權限；平台程式僅讀取已核准的華碩檔案，不修改來源。</p><button id="googleSourceDisconnect" class="action secondary">解除平台連接</button><details><summary>第一次設定Google OAuth</summary><ol><li>到<a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">Google Cloud 憑證設定</a>，選擇自己的測試專案。</li><li>建立「Web應用程式」OAuth用戶端，設定下方回呼網址；若應用程式為測試模式，加入公司帳號為測試使用者。</li><li>下載JSON後，在這裡選擇檔案。檔案只透過HTTPS送至平台加密保存，不貼到聊天、不放GitHub。</li></ol><label>回呼網址<input id="googleSourceRedirect" readonly></label><input id="googleSourceClientFile" type="file" accept=".json"><button id="googleSourceClientSave" class="action secondary">匯入Web OAuth設定</button></details><p id="googleSourceMessage" role="alert"></p></div>
       <div id="subAudit" class="panel subpanel">
         <div class="toolbar">
           <select id="auditEntity" onchange="loadAuditLogs()">
@@ -2911,7 +2911,7 @@ loadPublicSettings();
 <script src="/sharedLineGroups.js?v=20261115-1"></script>
 <script src="/extraDemands.js?v=20261115-1"></script>
 <script src="/personnelSources.js?v=20261115-roster10"></script>
-<script src="/googleSources.js?v=20261115-entry2"></script>
+<script src="/googleSources.js?v=20261117-cloud-excel"></script>
 <script src="/unifiedSync.js?v=20261116-work-protection"></script>
 </body>
 </html>

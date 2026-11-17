@@ -1,0 +1,5 @@
+const SOURCE=Object.freeze({id:'1XqOyce-hSCu1bwCOy2t17bXGQhnD9-WA',fleet:'華碩',sheetId:765732017,tab:'班表填寫(WHNDD)',format:'cloud-excel'});
+const fail=(message,code='HOURLY_SOURCE_FORMAT')=>{throw Object.assign(Error(message),{code});};
+async function parse(buffer){require('./excelFiles').inspectZip(buffer);const book=new (require('exceljs').Workbook)();try{await book.xlsx.load(buffer);}catch{fail('雲端Excel無法解析');}const sheets=book.worksheets.filter(s=>s.name===SOURCE.tab);if(sheets.length!==1)fail('找不到唯一WHNDD分頁','HOURLY_TAB_MISSING');const sheet=sheets[0];if(sheet.rowCount>2000||sheet.columnCount>26)fail('雲端包時工作表超出限制');const values=[];for(let row=1;row<=sheet.rowCount;row++){const cells=[];for(let col=1;col<=10;col++)cells.push(row>1&&col===6?'':require('./excelFiles').value(sheet.getCell(row,col)));values.push(cells);}return {kind:'WHNDD',tab:SOURCE.tab,sheetId:SOURCE.sheetId,values};}
+async function read(adapter=require('./googleSourceOAuth')){const bytes=await adapter.driveExcel(SOURCE.id);return parse(bytes);}
+module.exports={SOURCE,parse,read};
