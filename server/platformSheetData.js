@@ -2,6 +2,8 @@ const {hash,SOURCE_ID}=require('./sourceCatalog');
 const MAX_ROWS=20000,MAX_CELLS=1500000;
 const view=(name,table,spec,where='')=>({name:'平台_'+name,table,columns:spec.split('|').map(x=>x.split(':')),where});
 const views=[
+ view('每日任務指派歷程','daily_task_allocation_history','id:歷程ID|service_date:任務日期|source_key:來源任務識別|actor:操作人|before_data:原資料|after_data:新資料|at:時間'),
+ view('每日任務指派','daily_task_allocations','service_date:任務日期|source_key:來源任務識別|source_id:來源試算表|route_code:路線編號|fleet_id:指派車隊ID|source_snapshot:指派資訊與待補項目|assigned_by:指派人|assigned_at:指派時間'),
  view('人員來源同步','personnel_source_snapshots','kind:來源類型|source_version:來源版本|last_success:最後成功|error_code:錯誤|updated_at:更新時間'),
  view('罰款訊息待核對','penalty_message_drafts','id:訊息草稿ID|route_code:路線編號|driver_code:司機ID|violation_kind:異常項目|source_amount:原訊息金額未確認|source_text:原始訊息|case_id:人工立案ID|status:狀態|created_at:接收時間'),
  view('追加需求來源','line_demand_sources','group_id:來源群組|enabled:啟用|updated_by:設定人|updated_at:時間'),
