@@ -50,7 +50,7 @@ const views=[
  view('操作稽核','audit_logs','id:紀錄ID|at:時間|username:操作人|role:角色|action:操作|entity:資料類型|entity_id:資料ID'),
  view('同步傳送狀態','fleet_delivery_jobs','id:工作ID|kind:類型|status:狀態|attempts:次數|error_code:錯誤碼|created_at:建立時間|updated_at:更新時間',"COALESCE(t.payload->>'key','')<>'platformSnapshot'"),
  view('網站設定','settings','key:設定|value:內容',"t.key IN ('system_name','announcement','locations','container_sizes','carriers','shopee_vehicle_types')"),
- view('每日回填來源狀態','company_staff_source_snapshots','source_id:來源試算表|fleet_name:車行|sheet_id:來源分頁ID|last_success:最近成功|error_code:讀取錯誤|updated_at:狀態時間|task_kind:包時類型'),
+ view('每日回填來源狀態','company_staff_source_snapshots','source_id:來源試算表|fleet_name:車行|sheet_id:來源分頁ID|last_success:最近成功|error_code:讀取錯誤|updated_at:狀態時間'),
  view('包時來源狀態','hourly_task_snapshots','id:紀錄ID|cycle_start:週期開始|fleet_name:車行|source_id:來源試算表|source_tab:來源分頁|last_success:最近成功|error_code:讀取錯誤|updated_at:狀態時間|task_kind:包時類型'),
  view('車行名冊對應','dispatch_source_fleet_aliases','source_name:來源車行|fleet_id:平台車隊ID|updated_by:設定人|updated_at:更新時間')
 ];
