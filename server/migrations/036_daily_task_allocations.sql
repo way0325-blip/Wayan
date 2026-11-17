@@ -10,3 +10,4 @@ CREATE TABLE daily_task_allocation_history (
  id BIGSERIAL PRIMARY KEY,service_date DATE NOT NULL,source_key TEXT NOT NULL,actor TEXT NOT NULL,
  before_data JSONB,after_data JSONB NOT NULL,at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE TRIGGER wayan_change AFTER INSERT OR UPDATE OR DELETE ON daily_task_allocation_history FOR EACH STATEMENT EXECUTE FUNCTION wayan_notify_change();
