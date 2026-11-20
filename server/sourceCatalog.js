@@ -2,23 +2,26 @@ const crypto=require('node:crypto');
 const {REGIONS,normalizeCity}=require('./deliveryRegions');
 const {isValidDateKey}=require('./dates');
 const routing=require('../public/deliveryRouting');
+const ROUTE_SOURCE_ID='1fgzigNTy_Vx-SMuu-affuOZ-RNquBbs0AZeMRxOHZf0';
 const SOURCE_ID='12nj_N2zUrNHnYi0krf1kgorfqtJpz6y6MrMvAJ0WXSc';
 const SPECS=Object.freeze({
+ support:{name:'路線規畫表-支援車趟',sheetId:1692291193,columns:[0,1,2,4,5,6,7,8],end:4000},
  drivers:{name:'司機資料',sheetId:196637400,columns:[2,3,5,6,7,8,9,10,11,14],end:2098},
  parking:{name:'園區停車場清冊',sheetId:481811313,columns:[0,1,2,3,4],end:1000},
  vehicles:{name:'S-SOC車輛名單',sheetId:1504866403,columns:[0,1,2,3],end:1000},
  cars:{name:'汽車造冊名單',sheetId:1909462096,columns:[0,1,2,3,4],end:1000},
- NB:{name:'北倉-店配路線規劃表',sheetId:946527726,columns:[1,2,4,5,6,7,8,9],end:585},
- FN:{name:'北倉- NDD路線規劃表',sheetId:900699516,columns:[1,2,4,5,6,7,8,9],end:1300},
- WB:{name:'北倉-WH NDD路線規劃表',sheetId:1820354237,columns:[1,2,4,5,6,7,8,9],end:3396},
+ NB:{name:'北倉-店配路線規畫表',aliases:['北倉-店配路線規劃表'],sheetId:946527726,columns:[1,2,4,5,6,7,8,9],end:4000},
+ FN:{name:'北倉-NDD路線規劃表',aliases:['北倉- NDD路線規劃表'],sheetId:900699516,columns:[1,2,4,5,6,7,8,9],end:4000},
+ WB:{name:'北倉-WH NDD路線規劃表',sheetId:1820354237,columns:[1,2,4,5,6,7,8,9],end:4000},
 });
-const HEADERS={drivers:{2:'中文姓名',3:'車輛類型',5:'駕照類型',6:'駕照到期日',7:'手機號碼',8:'倉別',9:'狀態',10:'司機編號',11:'員工ID',14:'廠區安全規範 繳交'},parking:{0:'供應商',1:'營業貨車_車牌',2:'營業貨車_車型',3:'自用車_車牌',4:'自用車_車主司機編號'},vehicles:{0:'車牌號碼',1:'車型',2:'司機姓名',3:'司機編號'},cars:{0:'登錄日期',1:'車類型',2:'車牌號碼 (不須加"-")',3:'聯絡電話 (不須加"-")',4:'使否提交長榮'}};
+const HEADERS={support:{0:'日期',1:'路線編號',2:'車型',4:'到倉疊貨時段',5:'碼頭',6:'路線順序',7:'門市名稱',8:'門市地址'},drivers:{2:'中文姓名',3:'車輛類型',5:'駕照類型',6:'駕照到期日',7:'手機號碼',8:'倉別',9:'狀態',10:'司機編號',11:'員工ID',14:'廠區安全規範 繳交'},parking:{0:'供應商',1:'營業貨車_車牌',2:'營業貨車_車型',3:'自用車_車牌',4:'自用車_車主司機編號'},vehicles:{0:'車牌號碼',1:'車型',2:'司機姓名',3:'司機編號'},cars:{0:'登錄日期',1:'車類型',2:'車牌號碼 (不須加"-")',3:'聯絡電話 (不須加"-")',4:'使否提交長榮'}};
 const hash=v=>crypto.createHash('sha256').update(JSON.stringify(v)).digest('hex');
 const text=v=>v==null?'':String(v).trim();
 const plate=v=>text(v).toUpperCase().replace(/[\s-]/g,'');
 function location(address){const raw=String(address||'').normalize('NFKC').trim().replace(/^\d{3,6}\s*/,'');const city=normalizeCity(raw.slice(0,3));return {city,district:REGIONS[city]?.find(d=>raw.startsWith(raw.slice(0,3)+d))||''};}
 function projectRegions(batch){if(!batch||!['NB','FN','WB'].includes(batch.kind))return batch;return {...batch,records:batch.records.map(r=>{const problems=r.problems.filter(p=>!/^第\d+列(?:不在新竹以北配送範圍或地址待核對|地址行政區待核對)$/.test(p)),stops=r.stops.map(stop=>{const loc=location(stop.address);if(!loc.district)problems.push('第'+stop.sourceRow+'列地址行政區待核對');return {...stop,...loc};});return {...r,stops,problems};})};}
 function parse(kind,rows){
+ if(kind==='support')throw new Error('支援車趟須先經來源欄位核對後分流至路線清單');
  const spec=SPECS[kind];if(!spec||!Array.isArray(rows)||rows.length>4000)throw new Error('來源種類或筆數無效');
  const issues=[],records=[],keys=new Map();let current,previousRow=1;
  const issue=(row,message)=>issues.push({row,message});
@@ -76,18 +79,22 @@ function parse(kind,rows){
 }
 // Read only the pinned workbook and permitted columns. Password/account/identity-number columns are never requested.
 async function readSource(kind,env=process.env,fetcher=fetch){
- const spec=SPECS[kind];if(!spec)throw new Error('來源種類無效');
+ const spec=SPECS[kind];if(!spec)throw new Error('來源種類無效');const sourceId=['NB','FN','WB','support'].includes(kind)?ROUTE_SOURCE_ID:SOURCE_ID;
+ if(env===process.env&&await require('./googleSourceOAuth').connected())return readSourceData(kind,spec,suffix=>require('./googleSourceOAuth').google(sourceId+suffix));
  const email=env.WAYAN_GOOGLE_CLIENT_EMAIL,key=env.WAYAN_GOOGLE_PRIVATE_KEY?.replace(/\\n/g,'\n');
  if(!email||!key)throw new Error('尚未設定測試 Google 讀取授權');
  const now=Math.floor(Date.now()/1000),payload=[{alg:'RS256',typ:'JWT'},{iss:email,scope:'https://www.googleapis.com/auth/spreadsheets.readonly',aud:'https://oauth2.googleapis.com/token',iat:now,exp:now+3600}].map(x=>Buffer.from(JSON.stringify(x)).toString('base64url')).join('.');
  const assertion=payload+'.'+crypto.sign('RSA-SHA256',Buffer.from(payload),key).toString('base64url');
  const auth=await fetcher('https://oauth2.googleapis.com/token',{method:'POST',signal:AbortSignal.timeout(10000),headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'urn:ietf:params:oauth:grant-type:jwt-bearer',assertion})});
  if(!auth.ok)throw new Error('Google 讀取授權失敗');const token=(await auth.json()).access_token;if(!token)throw new Error('Google 讀取授權失敗');
- const get=async suffix=>{const r=await fetcher('https://sheets.googleapis.com/v4/spreadsheets/'+SOURCE_ID+suffix,{signal:AbortSignal.timeout(15000),headers:{Authorization:'Bearer '+token}});if(!r.ok)throw new Error(r.status===403||r.status===404?'請將來源試算表以檢視者分享給測試服務帳戶':'Google 來源讀取失敗');return r.json();};
+ const get=async suffix=>{const r=await fetcher('https://sheets.googleapis.com/v4/spreadsheets/'+sourceId+suffix,{signal:AbortSignal.timeout(15000),headers:{Authorization:'Bearer '+token}});if(!r.ok)throw new Error(r.status===403||r.status===404?'請將來源試算表以檢視者分享給測試服務帳戶':'Google 來源讀取失敗');return r.json();};
+ return readSourceData(kind,spec,get);
+}
+async function readSourceData(kind,spec,get){
  const meta=await get('?fields=sheets.properties');
- if(!meta.sheets?.some(s=>s.properties.sheetId===spec.sheetId&&s.properties.title===spec.name))throw new Error('來源分頁名稱或ID變更，請重新核對');
+ const sheet=meta.sheets?.find(s=>s.properties.sheetId===spec.sheetId&&[spec.name,...(spec.aliases||[])].includes(s.properties.title))?.properties;if(!sheet)throw new Error('來源分頁名稱或ID變更，請重新核對');const end=Math.min(spec.end,sheet.gridProperties?.rowCount||spec.end);if((sheet.gridProperties?.rowCount||0)>spec.end)throw new Error('來源列數超過已核對上限，請調整匯入範圍後重試');
  const headerParams=new URLSearchParams({valueRenderOption:'FORMATTED_VALUE'});
- for(const col of spec.columns){const letter=String.fromCharCode(65+col);headerParams.append('ranges',`'${spec.name}'!${letter}1:${letter}1`);}
+ for(const col of spec.columns){const letter=String.fromCharCode(65+col);headerParams.append('ranges',`'${sheet.title}'!${letter}1:${letter}1`);}
  const headers=await get('/values:batchGet?'+headerParams);
  const normalizeHeader=v=>text(v).replace(/\s+/g,'');
  for(let i=0;i<spec.columns.length;i++){
@@ -96,9 +103,9 @@ async function readSource(kind,env=process.env,fetcher=fetch){
   if(!HEADERS[kind]&&((col===1&&!actual.startsWith('路線編號'))||(col===7&&actual!=='門市名稱')||(col===8&&actual!=='門市地址')))throw new Error('來源路線欄位標題變更，停止讀取資料');
  }
  const params=new URLSearchParams({valueRenderOption:'FORMATTED_VALUE'});
- for(const col of spec.columns){const letter=String.fromCharCode(65+col);params.append('ranges',`'${spec.name}'!${letter}1:${letter}${spec.end}`);}
+ for(const col of spec.columns){const letter=String.fromCharCode(65+col);params.append('ranges',`'${sheet.title}'!${letter}1:${letter}${end}`);}
  const result=await get('/values:batchGet?'+params),rows=[];
  for(let index=0;index<spec.columns.length;index++)for(let i=1;i<(result.valueRanges?.[index]?.values?.length||0);i++){rows[i]??={sourceRow:i+1,cells:{}};rows[i].cells[spec.columns[index]]=result.valueRanges[index].values[i]?.[0]??'';}
  return rows.filter(Boolean);
 }
-module.exports={projectRegions,SOURCE_ID,SPECS,parse,readSource,hash,plate};
+module.exports={projectRegions,SOURCE_ID,ROUTE_SOURCE_ID,SPECS,parse,readSource,hash,plate};

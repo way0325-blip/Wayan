@@ -1,6 +1,6 @@
 const crypto=require('node:crypto');
-const isBinding=text=>/^\s*(?:車隊群組綁定|綁定)\s/.test(text);
-async function recordActivity(db,event,id){
+const isBinding=text=>/^\s*(?:車隊群組綁定|綁定|作業群組設定)\s/.test(text);
+async function recordActivity(db,event,id,resolvedFleetId){
   const group=event.source?.groupId;if(event.source?.type!=='group'||typeof group!=='string')return;
   if(event.type==='unsend'&&typeof event.unsend?.messageId==='string'){
     await db.query('INSERT INTO line_unsent_messages(group_id,message_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[group,event.unsend.messageId]);
@@ -10,7 +10,7 @@ async function recordActivity(db,event,id){
       WHERE payload->'source'->>'groupId'=$1 AND payload->'message'->>'id'=$2`,[group,event.unsend.messageId]);return;
   }
   if(!['message','join','leave'].includes(event.type))return;
-  const fleet=(await db.query('SELECT fleet_id FROM line_fleet_groups WHERE group_id=$1',[group])).rows[0];if(!fleet)return;
+  const fleet=resolvedFleetId?{fleet_id:resolvedFleetId}:(await db.query('SELECT fleet_id FROM line_fleet_groups WHERE group_id=$1',[group])).rows[0];if(!fleet)return;
   if(event.message?.id&&(await db.query('SELECT 1 FROM line_unsent_messages WHERE group_id=$1 AND message_id=$2',[group,event.message.id])).rowCount){event.message.text='[訊息已收回]';return {skip:true};}
   const text=event.message?.type==='text'?String(event.message.text||''):'';if(isBinding(text))return;
   const label=event.source.userId?'成員-'+crypto.createHash('sha256').update(group+event.source.userId).digest('hex').slice(0,8):'LINE系統';

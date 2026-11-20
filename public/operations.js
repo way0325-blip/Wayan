@@ -31,7 +31,7 @@
     el('opsCheckinRows').innerHTML=rows.length?'<table><thead><tr><th>累計總數</th><th>來源／回報者</th><th>時間</th><th>說明</th></tr></thead><tbody>'+rows.map(c=>'<tr><td>'+c.reported_total+'</td><td>'+esc(c.source)+'<br>'+esc(c.reported_by)+'</td><td>'+esc(date(c.created_at))+'</td><td>'+esc(c.note||'—')+'</td></tr>').join('')+'</tbody></table>':'<div class="empty">尚無回報紀錄</div>';
     el('opsDetailModal').classList.remove('hidden');
   }
-  function schedule(){if(timer)return;timer=setTimeout(()=>{timer=null;if(document.hidden)return;if(el('shopee').classList.contains('active'))loadLive();if(el('penaltyRules').classList.contains('active'))loadRules().catch(e=>show('rulesError',e.message));},600);}
+  function schedule(){if(timer)return;timer=setTimeout(()=>{timer=null;if(document.hidden)return;if(el('shopee').classList.contains('active'))window.WayanViewUpdates?.request('shopee-live',loadLive);if(el('penaltyRules').classList.contains('active'))window.WayanViewUpdates?.request('penalty-rules',()=>loadRules().catch(e=>show('rulesError',e.message)));},600);}
   document.addEventListener('wayan:refresh',schedule);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)schedule();});
   setInterval(()=>{if(getToken())schedule();},30000);
