@@ -1,0 +1,1 @@
+const oauth=require('./googleSourceOAuth');async function google(path,options){if(options&&options.method&&options.method!=='GET')throw Object.assign(Error('公司Google授權只允許讀取'),{code:'GOOGLE_READ_ONLY'});return await oauth.connected()?oauth.google(path):require('./fleetSheets').google(path,options);}module.exports={google};

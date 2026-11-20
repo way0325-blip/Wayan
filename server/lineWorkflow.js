@@ -4,7 +4,7 @@ const { transaction, audit } = require('./transaction');
 const { replyMessage } = require('./line');
 const { todayInTaipei } = require('./dates');
 const {handleFleetGroupEvent}=require('./fleetOperations');
-const HELP = '【可用指令】\n綁定 管理員提供的一次性代碼\n我的任務／待派車／已完成／統計\n到站 訂單編號\n完成 訂單編號或完整櫃號\n異常 訂單編號 說明\n事故 訂單編號 說明\n請在私人對話操作；只可查詢及回報自己的任務。';
+const HELP = '【可用指令】\n綁定 管理員提供的一次性代碼\n我的路線 任務編號（已接取後）\n我的任務／待派車／已完成／統計\n到站 訂單編號\n完成 訂單編號或完整櫃號\n異常 訂單編號 說明\n事故 訂單編號 說明\n請在私人對話操作；只可查詢及回報自己的任務。';
 const codeHash = code => crypto.createHash('sha256').update(code).digest('hex');
 function eventId(event) {
   return event.webhookEventId || crypto.createHash('sha256').update(JSON.stringify({
@@ -17,12 +17,20 @@ async function handleEvent(db, event, id) {
   await require('./lineGroups').observeGroup(db,event);
   if (event.type === 'join') return '已加入 Wayan。車隊群組請向管理員取得一次性代碼，在群組輸入「車隊群組綁定 代碼」。司機本人請私訊機器人綁定。';
   if (event.type !== 'message' || event.message?.type !== 'text') return null;
+  const sharedBind=await require('./sharedLineGroups').bindCode(db,event);if(sharedBind!==null)return sharedBind;
+  const penaltyDraft=await require('./penaltyMessageIntake').capture(db,event,id);if(penaltyDraft!==null)return penaltyDraft;
+  const capturedDemand=await require('./extraDemands').capture(db,event,id);if(capturedDemand!==null)return capturedDemand;
+  event={...event,message:{...event.message,text:require('./botCommands').normalize(event.message.text)}};
+  const extraReply=await require('./extraDemands').handle(db,event,id);if(extraReply!==null)return extraReply;
+  const sharedReply=await require('./sharedLineGroups').handle(db,event,id);
+  if(sharedReply!==null)return sharedReply;
   const fleetReply=await handleFleetGroupEvent(db,event,id);
   if(fleetReply!==null) return fleetReply;
-  if (event.source?.type !== 'user' || !event.source.userId) return '為保護派車資料，請私訊 Wayan Bot 操作。';
+  if (event.source?.type !== 'user' || !event.source.userId) return /^(我的任務|待派車|已完成|統計|到站|完成|異常|事故|我的路線|接取|車趟報到|退趟|改報)(?:\s|$)/.test(String(event.message.text||'').trim())?'為保護派車資料，請私訊 Wayan Bot 操作。':null;
   const text = String(event.message.text || '').trim();
   const userId = event.source.userId;
-  if (/^(說明|help|指令)$/i.test(text)) return HELP;
+  const routeReply=await require('./driverRouteClaims').privateQuery(db,text,userId,id);if(routeReply!==null)return routeReply;
+  if (/^(說明|help|指令)$/i.test(text)) return require('./botCommands').privateHelp;
   if (/^(異常回報|取消回報|異常進度)(?:\s|$)/.test(text))return '車隊異常請在已綁定的車隊LINE群組輸入「異常回報」。私人對話的任務異常仍須先綁定司機，使用「異常 訂單編號 說明」。';
   const bind = text.match(/^綁定\s+([A-Za-z0-9_-]{22})$/);
   if (bind) {
@@ -88,12 +96,13 @@ async function processEvent(id) {
       if (!row || row.status==='processed') return null;
       const reply=await handleEvent(db,row.payload,id);
       const payload=structuredClone(row.payload);
-      if (/^\s*(?:綁定|車隊群組綁定)\s+/.test(payload.message?.text || '')) payload.message.text='[綁定碼已隱藏]';
+      if (/^\s*(?:綁定|車隊群組綁定|作業群組設定)\s+/.test(payload.message?.text || '')) payload.message.text='[綁定碼已隱藏]';
       await db.query(`UPDATE line_events SET status='processed',attempts=attempts+1,processed_at=NOW(),reply_text=$2,
         payload=$3,error_code=NULL,delivery_status=$4 WHERE event_id=$1`,[id,reply,payload,reply && row.payload.replyToken?'pending':'skipped']);
       return {reply,token:row.payload.replyToken};
     });
     if (result?.reply && result.token) await deliverReply(id,result.token,result.reply);
+    if(result)await require('./stagingQuotaDiagnostics').record(id).catch(()=>console.error('STAGING_QUOTA_DIAGNOSTIC_FAILED'));
     return true;
   } catch {
     await pool.query("UPDATE line_events SET status='failed',attempts=attempts+1,error_code='PROCESSING_FAILED' WHERE event_id=$1 AND status<>'processed'",[id]);

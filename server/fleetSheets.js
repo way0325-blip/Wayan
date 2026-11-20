@@ -32,6 +32,8 @@ async function google(path,options={}){
 }
 const serial=value=>value==null?'':(new Date(value).getTime()+8*3600000)/86400000+25569;
 async function rowValues(key,id){
+  if(key==='routeCheckins'){const r=(await pool.query('SELECT c.*,t.task_code,t.status AS trip_status FROM delivery_route_claims c JOIN delivery_trips t ON t.id=c.trip_id WHERE c.id=$1',[id])).rows[0];if(!r)throw error('RECORD_NOT_FOUND');return ['C'+r.id,r.service_date,r.route_code,r.task_code,r.fleet_name,r.driver_code,r.driver_name,r.departure_time,Number(r.stop_count),r.revoked_at?'已退趟':r.trip_status==='已取消'?'車趟已取消':r.checked_in_at?'已報到':'已接取',serial(r.accepted_at),r.checked_in_at?serial(r.checked_in_at):'',serial(r.updated_at),r.revoke_reason||''];}
+  if(key==='tripReturns'){const r=(await pool.query('SELECT r.*,t.service_date,t.task_code,x.task_code AS target_code FROM delivery_trip_returns r JOIN delivery_trips t ON t.id=r.trip_id LEFT JOIN delivery_trips x ON x.id=r.target_trip_id WHERE r.id=$1',[id])).rows[0];if(!r)throw error('RECORD_NOT_FOUND');return ['U'+r.id,r.service_date,r.route_code,r.task_code,r.target_code||'',r.driver_code,r.kind,r.status,r.reason,serial(r.requested_at),r.processed_at?serial(r.processed_at):'',r.reviewed_by||r.actor];}
   if(key==='rules'){
     const r=(await pool.query('SELECT * FROM penalty_rules WHERE id=$1',[id])).rows[0];if(!r)throw error('RECORD_NOT_FOUND');
     return ['R'+r.id,r.rule_code,r.version,r.title,Number(r.points),r.proposed_amount===null?'':Number(r.proposed_amount),r.status,r.effective_date||'待確認',r.terms,r.source,r.verified_by||'',serial(r.created_at)];
@@ -45,7 +47,7 @@ async function rowValues(key,id){
   }
   if(key==='fleets'){
     const r=(await pool.query('SELECT f.*,g.bound_at FROM partner_fleets f LEFT JOIN line_fleet_groups g ON g.fleet_id=f.id WHERE f.id=$1',[id])).rows[0];
-    if(!r) throw error('RECORD_NOT_FOUND');return [r.id,r.name,r.contact_name,r.phone,r.daily_capacity,r.status,r.bound_at?'已綁定':'未綁定',serial(new Date())];
+    if(!r) throw error('RECORD_NOT_FOUND');if(r.is_simulated||String(r.note||'').startsWith('[模擬]'))throw error('SIMULATED_TASK_BLOCKED');return [r.id,r.name,r.contact_name,r.phone,r.daily_capacity,r.status,r.bound_at?'已綁定':'未綁定',serial(new Date())];
   }
   if(key==='tasks'){
     const r=(await pool.query('SELECT t.*,f.name AS fleet_name FROM fleet_work_orders t JOIN partner_fleets f ON f.id=t.fleet_id WHERE t.id=$1',[id])).rows[0];
@@ -71,13 +73,18 @@ async function sheetRow(key,id){
   });
 }
 async function deliverSheet(payload){
+  if(payload.key==='routeBackoffice')return require('./routeSheets').sync();
+  if(payload.key==='platformSnapshot')return require('./platformSheets').deliver();
+  if(payload.key==='attendance')return require('./attendanceSheets').deliver();
+  if(['rosterDrivers','rosterVehicles'].includes(payload.key))return require('./rosterSheets').deliver(payload);
+  if(payload.key==='fleets'&&(await pool.query('SELECT is_simulated FROM partner_fleets WHERE id=$1',[payload.id])).rows[0]?.is_simulated)throw error('SIMULATED_TASK_BLOCKED');
   const id=await targetId();if(!id || !credentialsReady()) throw error('GOOGLE_NOT_CONFIGURED');
   if(!/^[A-Za-z0-9_-]{10,200}$/.test(id)) throw error('GOOGLE_TARGET_INVALID');
   const spec=SHEETS[payload.key];if(!spec) throw error('INVALID_SHEET_KEY');
   const metadata=await google(id+'?fields=sheets.properties');
   const sheet=metadata.sheets?.find(s=>s.properties.title===spec.name)?.properties;
   if(!sheet) throw error('SHEET_TAB_MISSING');
-  const header=await google(id+'/values/'+encodeURIComponent("'"+spec.name+"'!A1:L1"));
+  const header=await google(id+'/values/'+encodeURIComponent("'"+spec.name+"'!A1:"+String.fromCharCode(64+spec.headers.length)+"1"));
   if(JSON.stringify((header.values?.[0]||[]).slice(0,spec.headers.length))!==JSON.stringify(spec.headers)) throw error('SHEET_HEADERS_CHANGED');
   const row=await sheetRow(payload.key,String(payload.id)),values=await rowValues(payload.key,payload.id);
   if(row>sheet.gridProperties.rowCount){
@@ -109,4 +116,4 @@ async function deliverSheet(payload){
     {range:"'營運總覽'!C13",values:[['由 Wayan 自動同步；請依最後成功寫入時間確認資料新鮮度']]},
   ]})});
 }
-module.exports={deliverSheet,targetId,credentialsReady,rowValues,sheetRow};
+module.exports={deliverSheet,targetId,credentialsReady,rowValues,sheetRow,google,serial};

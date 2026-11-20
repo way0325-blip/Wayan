@@ -1,0 +1,9 @@
+const test=require('node:test'),assert=require('node:assert/strict');
+const groups=require('../../public/routeCatalogGroups');
+test('E-column windows normalize harmless typography but preserve original source text',()=>{const w=groups.timeWindow(' 1：30 ～ 02：10 ');assert.equal(w.key,'01:30-02:10');assert.equal(w.raw,'1：30 ～ 02：10');assert.equal(w.start,'01:30');assert.equal(w.end,'02:10');});
+test('single time never invents an end time',()=>{const w=groups.timeWindow('20:00');assert.equal(w.type,'單一時點');assert.equal(w.start,'20:00');assert.equal(w.end,'');assert.equal(w.key,'20:00');});
+test('missing or malformed windows are explicitly pending',()=>{for(const v of ['',null,'待安排','24:00','20:99','12:00-25:00'])assert.equal(groups.timeWindow(v).key,'pending');});
+test('overnight windows retain cross-day meaning and groups sort by clock time',()=>{assert.equal(groups.timeWindow('23:30-01:00').overnight,true);const list=groups.groups(['20:00','待排','02:00-02:40','20:00'].map(timeWindow=>({timeWindow})));assert.deepEqual(list.map(g=>g.key),['02:00-02:40','20:00','pending']);assert.equal(list[1].count,2);});
+test('all stops contribute to route regions without duplicate districts',()=>{const a=groups.areas({stops:[{address:'台北市東區測試路1號',city:'臺北市',district:'信義區'},{address:'新竹市東區測試路1號'},{address:'新竹市東區測試路2號'},{address:'宜蘭縣頭城鎮測試路1號'}]});assert.deepEqual(a.districts,['臺北市信義區','新竹市東區','宜蘭縣頭城鎮']);assert.equal(a.unresolved,0);});
+test('unparseable regions remain pending and real zero midnight stays valid',()=>{assert.equal(groups.areas({stops:[{address:'地址待確認'}]}).unresolved,1);assert.equal(groups.timeWindow('00:00').start,'00:00');assert.equal(groups.timeWindow('00:00').sort,0);});
+test('time filtering distinguishes a single point from a time range',()=>{assert.equal(groups.matches({timeWindow:'20:00'},'20:00'),true);assert.equal(groups.matches({timeWindow:'20:00-20:40'},'20:00'),false);assert.equal(groups.matches({timeWindow:''},'pending'),true);});

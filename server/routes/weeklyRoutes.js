@@ -1,0 +1,1 @@
+const router=require('express').Router(),{requireAuth,requireRole}=require('../auth');router.use(requireAuth,requireRole('admin','dispatcher'),(req,res)=>res.status(410).json({error:'週期核對功能已移除，請使用固定路線清單與來源車行對照'}));module.exports=router;

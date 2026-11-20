@@ -17,7 +17,7 @@ test.before(async()=>{
   if(u.startsWith('https://sheets.googleapis.com/')){
    if(u.includes('?fields='))return ok({sheets:Object.values(SHEETS).map((s,i)=>({properties:{title:s.name,sheetId:i+1,gridProperties:{rowCount:5001,columnCount:12}}}))});
    if(u.includes('/values:batchUpdate')){if(denyWrite)return {ok:false,status:403};const b=JSON.parse(options.body);writes.push(b);for(const row of b.data)cells.set(row.range,row.values);return ok({});}
-   if(u.includes('/values/')){const range=decodeURIComponent(u.split('/values/')[1]);if(range.endsWith('!A1:L1')){const spec=Object.values(SHEETS).find(s=>range.startsWith("'"+s.name+"'!"));return ok({values:[spec.headers]});}return ok({values:cells.get(range)||[]});}
+   if(u.includes('/values/')){const range=decodeURIComponent(u.split('/values/')[1]);if(/!A1:[A-Z]+1$/.test(range)){const spec=Object.values(SHEETS).find(s=>range.startsWith("'"+s.name+"'!"));return ok({values:[spec.headers]});}return ok({values:cells.get(range)||[]});}
   }
   throw Error('Unexpected external request');
  };
