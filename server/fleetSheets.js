@@ -9,7 +9,7 @@ async function targetId(){
   const row=(await pool.query("SELECT value FROM settings WHERE key='fleet_spreadsheet_id'")).rows[0];
   return row?.value||process.env.WAYAN_FLEET_SHEET_ID||'';
 }
-function credentialsReady(){return Boolean(process.env.WAYAN_GOOGLE_CLIENT_EMAIL && process.env.WAYAN_GOOGLE_PRIVATE_KEY);}
+function credentialsReady(){return process.env.WAYAN_FREE_PREVIEW!=='yes'&&Boolean(process.env.WAYAN_GOOGLE_CLIENT_EMAIL && process.env.WAYAN_GOOGLE_PRIVATE_KEY);}
 async function token(){
   if(!credentialsReady()) throw error('GOOGLE_NOT_CONFIGURED');
   const email=process.env.WAYAN_GOOGLE_CLIENT_EMAIL,key=process.env.WAYAN_GOOGLE_PRIVATE_KEY.replace(/\\n/g,'\n');

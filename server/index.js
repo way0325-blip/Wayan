@@ -28,6 +28,7 @@ const app = express();
 // 讓速率限制看到的是用戶真實 IP,而不是 Render 代理的 IP(詳見 server/trustProxy.js)
 app.set("trust proxy", resolveTrustProxy());
 const PORT = process.env.PORT || 3000;
+const freePreview = process.env.WAYAN_FREE_PREVIEW === 'yes';
 
 // 安全性 headers。放寬 CSP 讓前端的內嵌 <script>/<style> 仍可運作
 // (public/index.html 是單一檔案的簡易前端,尚未拆成外部檔案)。
@@ -52,7 +53,7 @@ app.use(
 // LINE webhook 一定要在 express.json() 之前掛載:它需要驗證「原始」的請求內容(簽章比對),
 // 一旦被 express.json() 解析過,原始 body 就拿不回來了。這個路由不需要 CORS、也不用一般 API 限流
 // (呼叫方是 LINE 的伺服器,不是瀏覽器)。
-app.use("/api/line", lineWebhookRoutes);
+if (!freePreview) app.use("/api/line", lineWebhookRoutes);
 
 const allowedOrigins = (process.env.CORS_ORIGIN || "")
   .split(",")
@@ -105,7 +106,7 @@ app.use("/api/vehicles", vehicleRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
-app.use("/api/line/cron", lineCronRoutes);
+if (!freePreview) app.use("/api/line/cron", lineCronRoutes);
 app.use("/api/alerts", alertRoutes);
 app.use("/api/vehicle-maintenance-items", vehicleMaintenanceItemRoutes);
 app.use("/api/dispatch-staff", dispatchStaffRoutes);
@@ -152,6 +153,10 @@ async function start() {
     throw new Error('測試平台啟動需要獨立的 JWT_SECRET（至少 32 字）及 ADMIN_PASSWORD（至少 12 字），禁止沿用展示密碼');
   }
   await initDb();
+  if (freePreview) {
+    app.listen(PORT, () => console.log(`Wayan 獨立驗收環境已啟動，連接埠 ${PORT}`));
+    return;
+  }
   try{const c=await require('./googleSourceOAuth').status();console.log('GOOGLE_SOURCE_CONFIG_STATUS',JSON.stringify({keyReady:c.keyReady,clientReady:c.clientReady,configurationSource:c.configurationSource,connected:c.connected}));}catch{console.error('GOOGLE_SOURCE_CONFIG_STATUS_FAILED');}
   try {const demo=await require('./stagingDemoOrders').setupStagingDemo(require('./db').pool);if(demo.status!=='disabled')console.log('STAGING_DEMO_ORDERS',JSON.stringify(demo));}catch(err){console.error('STAGING_DEMO_ORDERS_FAILED',err.code||'SETUP_FAILED');}
   try {

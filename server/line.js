@@ -4,8 +4,9 @@ const { getSettings } = require("./settings");
 const { buildDispatchText } = require("./lineFormat");
 
 const API_BASE = "https://api.line.me/v2/bot";
-const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
-const ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+const freePreview = process.env.WAYAN_FREE_PREVIEW === 'yes';
+const CHANNEL_SECRET = freePreview ? undefined : process.env.LINE_CHANNEL_SECRET;
+const ACCESS_TOKEN = freePreview ? undefined : process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const MAX_LEN = 4500; // LINE 單則訊息上限 5000 字,留一點緩衝
 
 function isConfigured() {
@@ -81,6 +82,7 @@ async function pushMessage(to, text, options={}) {
 }
 
 async function getProfile(source) {
+  if (freePreview) return null;
   try {
     const path =
       source.type === "group"
