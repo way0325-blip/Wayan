@@ -9,9 +9,13 @@ test('isolated preview only accepts its dedicated database and never allows test
   const cloud={...local,WAYAN_FREE_DB_HOST:host,DATABASE_URL:`postgres://u:p@${host}/wayan_free_preview?sslmode=verify-full`};
   assert.equal(assertStagingDatabase(local).hostname,'localhost');
   assert.equal(assertStagingDatabase(cloud).hostname,host);
+  const restored={...cloud,WAYAN_FREE_DB_NAME:'wayan_free_restore',DATABASE_URL:cloud.DATABASE_URL.replace('/wayan_free_preview','/wayan_free_restore')};
+  assert.equal(assertStagingDatabase(restored).pathname,'/wayan_free_restore');
+  assert.throws(()=>assertStagingDatabase({...restored,WAYAN_FREE_DB_NAME:'wayan_staging_db',DATABASE_URL:restored.DATABASE_URL.replace('/wayan_free_restore','/wayan_staging_db')}));
   assert.throws(()=>assertStagingDatabase(local,true));
   for(const overrides of [
     {WAYAN_FREE_DB_HOST:'ep-other.ap-southeast-1.aws.neon.tech'},
+    {WAYAN_FREE_DB_NAME:'wayan_free_restore'},
     {STAGING_RENDER_POSTGRES_ID:'dpg-dbiq06cs728c738089lg-a'},
     {DATABASE_URL:env.DATABASE_URL},
     {DATABASE_URL:cloud.DATABASE_URL.replace('verify-full','require')},

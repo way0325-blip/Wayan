@@ -10,10 +10,12 @@ function assertStagingDatabase(env = process.env, destructive = false) {
   catch { throw new Error("必須明確設定獨立的 wayan-staging-db 連線"); }
   const renderProfile=Boolean(env.STAGING_RENDER_POSTGRES_ID);
   const freeProfile=env.WAYAN_FREE_PREVIEW==='yes';
+  const freeDatabase=env.WAYAN_FREE_DB_NAME||'wayan_free_preview';
   const loopback=['localhost','127.0.0.1','[::1]'].includes(url.hostname);
   const allowedName=!freeProfile&&!renderProfile&&decodeURIComponent(url.pathname)==='/wayan-staging-db';
   const allowedFree=freeProfile&&!destructive&&!renderProfile&&
-    decodeURIComponent(url.pathname)==='/wayan_free_preview'&&
+    ['wayan_free_preview','wayan_free_restore'].includes(freeDatabase)&&
+    decodeURIComponent(url.pathname)==='/'+freeDatabase&&
     (loopback&&!env.WAYAN_FREE_DB_HOST||
       url.hostname===env.WAYAN_FREE_DB_HOST&&/^ep-[a-z0-9-]+\.[a-z0-9.-]+\.neon\.tech$/.test(url.hostname)&&
       (!url.port||url.port==='5432')&&url.searchParams.get('sslmode')==='verify-full'&&
