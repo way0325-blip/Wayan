@@ -46,6 +46,7 @@ async function handleFleetGroupEvent(db,event,eventId){
   if(typeof groupId!=='string' || typeof userId!=='string') return '無法確認回報者，請聯絡調度人員使用平台登記。';
   const bind=text.match(/^車隊群組綁定\s+([A-Za-z0-9_-]{22})$/);
   if(bind){
+    if((await db.query('SELECT 1 FROM line_shared_group_fleets WHERE group_id=$1',[groupId])).rowCount)return '此群組已設定為共同作業群組，不能綁定單一車隊。';
     await db.query('SELECT pg_advisory_xact_lock(870033)');
     const code=(await db.query(`SELECT c.*,f.status FROM fleet_group_codes c JOIN partner_fleets f ON f.id=c.fleet_id
       WHERE code_hash=$1 AND expires_at>NOW() FOR UPDATE OF c`,[codeHash(bind[1])])).rows[0];
@@ -68,7 +69,7 @@ async function handleFleetGroupEvent(db,event,eventId){
   if(checkin!==null)return checkin;
   const intake=await require('./lineIncidentIntake').handle(db,event,eventId,fleet);if(intake!==null)return intake;
   if(text==='門店車趟')return require('./deliveryLine').list(db,fleet);
-  if(/^(說明|help|指令)$/i.test(text))return '【車隊指令】\n門店車趟\n接取 路線編號 司機ID\n車趟報到 路線編號\n退趟 路線編號 原因\n改報 原路線 新路線 司機ID 原因\n完整路線請本人私訊：我的路線 任務編號\n異常回報／異常進度 案件編號';
+  if(/^(說明|help|指令)$/i.test(text))return require('./botCommands').groupHelp;
   const keyword=await require('./lineKeywords').keywordReply(db,text);
   if(keyword!==null)return keyword;
   const actor={username:`LINE車隊:${fleet.id}:${userId.slice(-6)}`,role:'fleet'};

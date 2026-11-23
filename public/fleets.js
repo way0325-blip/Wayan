@@ -95,5 +95,5 @@
   el('fleetCaseForm').addEventListener('submit',event=>{event.preventDefault();action(async()=>{
     await api('/api/fleet-ops/incidents/'+selectedCase.id,{method:'PATCH',body:JSON.stringify({status:el('fleetCaseNext').value,handler:el('fleetCaseHandler').value,resolution:el('fleetCaseResolution').value,note:el('fleetCaseNote').value})});await openCase(selectedCase.id);await refresh();
   });});
-  setInterval(()=>{if(getToken()&&el('fleetOps').classList.contains('active')&&!document.querySelector('.modal:not(.hidden)'))action(refresh);},20000);
+  setInterval(()=>{if(getToken()&&el('fleetOps').classList.contains('active')&&!document.hidden)window.WayanViewUpdates?.request('fleet-lists',()=>action(refresh));},20000);
 })();

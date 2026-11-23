@@ -65,6 +65,7 @@ app.use(
   })
 );
 
+app.use('/api/excel',express.json({limit:'6mb'}));
 app.use('/api/store-delivery',express.json({limit:'2mb'}));
 app.use('/api/source-catalog',express.json({limit:'3mb'}));
 app.use('/api/pickup-routes',express.json({limit:'3mb'}));
@@ -117,6 +118,8 @@ app.use('/api/penalty-rules',require('./routes/penaltyRules'));
 app.use('/api/penalty-cases',require('./routes/penaltyCases'));
 app.use('/api/store-delivery',require('./routes/storeDelivery'));
 app.use('/api/shopee-live',require('./routes/shopeeLive'));
+app.use('/api/google-sources',require('./routes/googleSources'));
+app.use('/api/excel',require('./routes/excelFiles'));
 app.use('/api/source-catalog',require('./routes/sourceCatalog'));
 app.use('/api/pickup-routes',require('./routes/pickupRoutes'));
 app.use('/api/operation-sources',require('./routes/operationSources'));
@@ -149,6 +152,7 @@ async function start() {
     throw new Error('測試平台啟動需要獨立的 JWT_SECRET（至少 32 字）及 ADMIN_PASSWORD（至少 12 字），禁止沿用展示密碼');
   }
   await initDb();
+  try{const c=await require('./googleSourceOAuth').status();console.log('GOOGLE_SOURCE_CONFIG_STATUS',JSON.stringify({keyReady:c.keyReady,clientReady:c.clientReady,configurationSource:c.configurationSource,connected:c.connected}));}catch{console.error('GOOGLE_SOURCE_CONFIG_STATUS_FAILED');}
   try {const demo=await require('./stagingDemoOrders').setupStagingDemo(require('./db').pool);if(demo.status!=='disabled')console.log('STAGING_DEMO_ORDERS',JSON.stringify(demo));}catch(err){console.error('STAGING_DEMO_ORDERS_FAILED',err.code||'SETUP_FAILED');}
   try {
     const setup=await require('./stagingFleetBootstrap').setupStagingFleet(require('./db').pool);
@@ -159,8 +163,10 @@ async function start() {
   require('./fleetJobs').startFleetWorker();
   require('./platformSheets').start();
   require('./routeSheets').start();
+  require('./routeSourceRefresh').start();
   require('./staffingSync').start();
   require('./hourlyTasks').start();
+  require('./personnelSources').start();
   app.listen(PORT, () => {
     console.log(`港區星際運輸調度中心伺服器已啟動: http://localhost:${PORT}`);
     require('./sourceCatalogBootstrap').bootstrapSourceCatalog(require('./db').pool)

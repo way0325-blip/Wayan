@@ -7,7 +7,7 @@ async function bootstrapSourceCatalog(pool,env=process.env,reader=readSource){
  if(env.WAYAN_ENV!=='staging'||!env.WAYAN_GOOGLE_CLIENT_EMAIL||!env.WAYAN_GOOGLE_PRIVATE_KEY)return [];
  assertStagingDatabase(env);
  const results=[];
- for(const kind of Object.keys(SPECS)){
+ for(const kind of Object.keys(SPECS).filter(k=>k!=='support')){
   if((await pool.query('SELECT 1 FROM source_catalog_batches WHERE source_id=$1 AND kind=$2 LIMIT 1',[SOURCE_ID,kind])).rowCount)continue;
   try{
    const parsed=parse(kind,await reader(kind,env));

@@ -4,6 +4,8 @@ const handle=fn=>async(req,res,next)=>{try{res.json(await fn(req));}catch(e){if(
 router.get('/',handle(req=>svc.board(pool,req.query.start||model.nextCycle().start_date)));
 router.get('/daily',handle(req=>require('../dailyFleetTasks').board(pool,req.query.date||require('../public/dispatchWindow').anchor())));
 router.post('/daily-refresh',handle(async req=>{const day=req.body?.date;if(!require('../dates').isValidDateKey(day))throw Object.assign(new Error('日期無效'),{status:400});const start=require('../dates').addDays(day,-((require('../dates').weekdayOf(day)-2+7)%7));await require('../staffingSync').sync(start,req.user);return require('../dailyFleetTasks').board(pool,day);}));
+router.post('/daily-assign-preview',handle(req=>require('../dailyAllocations').preview(pool,req.body)));
+router.post('/daily-assign',handle(req=>transaction(pool,db=>require('../dailyAllocations').assign(db,req.body,req.user))));
 router.get('/options',handle(()=>svc.options(pool)));
 router.get('/hourly',handle(req=>require('../hourlyTasks').status(pool,req.query.start||model.nextCycle().start_date)));
 router.post('/hourly',handle(req=>require('../hourlyTasks').sync(req.body?.start,req.user)));

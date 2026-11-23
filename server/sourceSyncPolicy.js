@@ -1,0 +1,1 @@
+function canPoll(env=process.env){return env.WAYAN_ENV==='staging'&&(env.WAYAN_FREE_PREVIEW==='yes'?env.WAYAN_FREE_SOURCE_SYNC==='yes':require('./fleetSheets').credentialsReady());}module.exports={canPoll};
