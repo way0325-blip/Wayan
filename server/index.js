@@ -154,6 +154,7 @@ async function start() {
   }
   await initDb();
   if (freePreview) {
+    if(process.env.WAYAN_FREE_SOURCE_SYNC==='yes'){for(const reader of ['routeSourceRefresh','staffingSync','hourlyTasks','personnelSources'])require('./'+reader).start();}
     app.listen(PORT, () => console.log(`Wayan 獨立驗收環境已啟動，連接埠 ${PORT}`));
     return;
   }
