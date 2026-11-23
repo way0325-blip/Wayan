@@ -154,7 +154,7 @@ async function start() {
   }
   await initDb();
   if (freePreview) {
-    if(process.env.WAYAN_FREE_SOURCE_SYNC==='yes'){for(const reader of ['routeSourceRefresh','staffingSync','hourlyTasks','personnelSources'])require('./'+reader).start();}
+    if(process.env.WAYAN_FREE_SOURCE_SYNC==='yes'){for(const reader of ['routeSourceRefresh','staffingSync','hourlyTasks','personnelSources'])require('./'+reader).start();require('./googleSourceOAuth').status().then(async s=>{console.log('READ_ONLY_GOOGLE_SOURCE_STATUS',JSON.stringify({keyReady:s.keyReady,clientReady:s.clientReady,connected:s.connected,driveReady:s.driveReady}));if(s.connected)await require('./routeSourceRefresh').refresh();}).catch(e=>console.error('READ_ONLY_INITIAL_SYNC_FAILED',e.code||e.status||'SOURCE_READ_FAILED'));}
     app.listen(PORT, () => console.log(`Wayan 獨立驗收環境已啟動，連接埠 ${PORT}`));
     return;
   }
