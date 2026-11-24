@@ -2,13 +2,13 @@
  const el=id=>document.getElementById(id),esc=v=>escapeHTML(String(v??'')),pane=el('shopeeIntegrated-staffing');if(!pane)return;let importSeq=0;let data,source,seq=0,busy=false,importInput,importPreview;
  const plus=(key,n)=>{const [y,m,d]=key.split('-').map(Number);return new Date(Date.UTC(y,m-1,d+n)).toISOString().slice(0,10);};
  const next=()=>{const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(x=>[x.type,x.value])),key=p.year+'-'+p.month+'-'+p.day,w=new Date(key+'T00:00:00Z').getUTCDay();return plus(key,(2-w+7)%7);};
- pane.innerHTML='<div class="panel"><div class="staffing-header"><div><h3>這週，還有誰沒排好？</h3><p class="hint">依車行查看待填路線。填入有效司機 ID 是預排，與實際 LINE 報到分開。</p></div><div class="staffing-toolbar"><button id="staffPrev" class="action secondary">上一週</button><label>週期開始（星期二）<input id="staffStart" type="date"></label><button id="staffNext" class="action secondary">下一週</button><button id="staffRefresh" class="action secondary">重新整理</button></div></div><div id="staffDeadline" class="staffing-deadline"></div><div id="staffCards" class="staffing-cards"></div><div class="staffing-toolbar"><button id="staffAdd" class="action">加入本週要跑的路線</button><button id="staffImport" class="action secondary">匯入司機回填</button><button id="staffTemplate" class="action secondary">下載本週填寫範本</button><button id="staffExport" class="action secondary">匯出目前清單</button><button id="staffCopy" class="action secondary">複製催填清單</button></div><div class="staffing-toolbar"><input id="staffSearch" type="search" placeholder="搜尋路線、車行、司機 ID"><details class="staffing-filter" id="staffFilter"><summary></summary><div class="staffing-filter-options"></div></details><details class="staffing-filter" id="staffBusiness"><summary></summary><div class="staffing-filter-options"></div></details><details class="staffing-filter" id="staffDate"><summary></summary><div class="staffing-filter-options"></div></details></div><p id="staffStatus" role="status"></p><div id="staffRows"></div></div>';
+ pane.innerHTML='<div class="panel"><div class="staffing-header"><div><h3>這週，還有誰沒排好？</h3><p class="hint">依車行查看待填路線。填入有效司機 ID 是預排，與實際 LINE 報到分開。</p></div><div class="staffing-toolbar"><button id="staffPrev" class="action secondary">上一週</button><label>週期開始（星期二）<input id="staffStart" type="date"></label><button id="staffNext" class="action secondary">下一週</button><button id="staffRefresh" class="action secondary">重新整理</button></div></div><div id="staffDeadline" class="staffing-deadline"></div><div id="staffCards" class="staffing-cards"></div><div class="staffing-toolbar"><button id="staffAdd" class="action">加入本週要跑的路線</button><button id="staffImport" class="action secondary">匯入司機回填</button><button id="staffTemplate" class="action secondary">下載本週填寫範本</button><button id="staffExport" class="action secondary">匯出目前清單</button><button id="staffCopy" class="action secondary">複製催填清單</button></div><div class="staffing-toolbar"><input id="staffSearch" type="search" placeholder="搜尋路線、車行、司機 ID"><details class="staffing-filter" id="staffBusiness"><summary></summary><div class="staffing-filter-options"></div></details><details class="staffing-filter" id="staffDate"><summary></summary><div class="staffing-filter-options"></div></details></div><fieldset class="staffing-state-filter" id="staffFilter"><legend>排班狀態（可複選）</legend><div class="staffing-state-options"></div></fieldset><p id="staffStatus" role="status"></p><div id="staffRows"></div></div>';
  el('staffStart').value=next();
  function modal(title,html){el('staffModal')?.remove();document.body.insertAdjacentHTML('beforeend','<div class="modal staffing-modal" id="staffModal"><div class="modal-box"><div class="modal-head"><h3>'+esc(title)+'</h3><button class="close" id="staffClose">×</button></div>'+html+'<p id="staffError" role="alert"></p></div></div>');el('staffClose').onclick=()=>el('staffModal').remove();}
  async function action(fn){if(busy)return;busy=true;const status=el('staffError')||el('staffStatus');status.textContent='正在處理，請稍候…';try{await fn();}catch(e){(el('staffError')||el('staffStatus')).textContent=e.message;}finally{busy=false;if(status.isConnected&&status.textContent==='正在處理，請稍候…')status.textContent='';}}
  async function load(){if(!getToken()||!['admin','dispatcher'].includes(getRole()))return;const stamp=++seq,token=getToken();try{const d=await api('/api/weekly-staffing?start='+encodeURIComponent(el('staffStart').value));if(stamp!==seq||token!==getToken())return;data=d;render();}catch(e){el('staffStatus').textContent=e.message;}}
  const stateOptions = [
-  ['incomplete', '尚未完成'], ['missing', '尚未填 ID'], ['review', 'ID／車行待核對'],
+  ['incomplete', '尚未完成'], ['missing', '尚未填入 ID'], ['review', 'ID／車隊待核對'],
   ['urgent', '需立即處理'], ['arranged', '已安排'], ['cancelled', '已停駛']
  ];
  const stateMatches = {
@@ -19,13 +19,13 @@
   arranged: row => row.complete,
   cancelled: row => row.cancelled
  };
- function createFilter(id, label, allLabel, defaultValues = []) {
+ function createFilter(id, label, allLabel, defaultValues = [], toggleSelection) {
   const control = el(id), summary = control.querySelector('summary');
-  const list = control.querySelector('.staffing-filter-options');
+  const list = control.querySelector('.staffing-filter-options, .staffing-state-options');
   let options;
   const selected = new Set(defaultValues);
   function update() {
-   summary.textContent = label + ' · ' + (selected.size ? '已選 ' + selected.size + ' 項' : allLabel);
+   if (summary) summary.textContent = label + ' · ' + (selected.size ? '已選 ' + selected.size + ' 項' : allLabel);
    for (const input of list.querySelectorAll('input')) {
     input.checked = input.value ? selected.has(input.value) : selected.size === 0;
    }
@@ -44,6 +44,7 @@
   }
   list.onchange = ({target}) => {
    if (!target.value) selected.clear();
+   else if (toggleSelection) toggleSelection(selected, target.value, target.checked);
    else if (target.checked) selected.add(target.value);
    else selected.delete(target.value);
    update();
@@ -59,7 +60,19 @@
    }
   };
  }
- const states = createFilter('staffFilter', '排班狀態', '全部需求', ['incomplete']);
+ const states = createFilter('staffFilter', '排班狀態', '全部需求', ['incomplete'], (selected, value, checked) => {
+  if (!checked) {
+   selected.delete(value);
+   return;
+  }
+  if (value === 'incomplete') {
+   selected.delete('missing');
+   selected.delete('review');
+  } else if (value === 'missing' || value === 'review') {
+   selected.delete('incomplete');
+  }
+  selected.add(value);
+ });
  const businesses = createFilter('staffBusiness', '業務類型', '所有業務類型');
  const dates = createFilter('staffDate', '任務日期', '整週');
  states.setOptions(stateOptions);
