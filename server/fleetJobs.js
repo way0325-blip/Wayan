@@ -33,8 +33,9 @@ async function runJobs(options={}){
   for(let n=0;n<(options.limit||3);n++){
     const job=await transaction(pool,async db=>{
       const row=(await db.query(`SELECT * FROM fleet_delivery_jobs WHERE attempts<5 AND
+        (NOT $1::boolean OR (kind='sheet' AND job_key='sheet:platformSnapshot:current' AND payload->>'key'='platformSnapshot')) AND
         ((status IN ('pending','failed','blocked') AND next_attempt_at<=NOW()) OR (status='processing' AND locked_until<NOW()))
-        ORDER BY CASE WHEN kind='line' THEN 0 WHEN payload->>'key' IN ('incidents','history','routeCheckins','tripReturns','rosterDrivers','rosterVehicles','attendance') THEN 1 ELSE 2 END,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1`)).rows[0];
+        ORDER BY CASE WHEN kind='line' THEN 0 WHEN payload->>'key' IN ('incidents','history','routeCheckins','tripReturns','rosterDrivers','rosterVehicles','attendance') THEN 1 ELSE 2 END,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1`,[options.platformMirrorOnly===true])).rows[0];
       if(!row) return null;
       return (await db.query(`UPDATE fleet_delivery_jobs SET status='processing',attempts=attempts+1,claimed_revision=revision,
         locked_until=NOW()+CASE WHEN payload->>'key' IN ('rosterDrivers','rosterVehicles','attendance','platformSnapshot','routeBackoffice') THEN INTERVAL '180 seconds' ELSE INTERVAL '60 seconds' END,updated_at=NOW() WHERE id=$1 RETURNING *`,[row.id])).rows[0];
@@ -59,9 +60,9 @@ async function runJobs(options={}){
   }
   return results;
 }
-function startFleetWorker(){
+function startFleetWorker(options={}){
   let running=false;
-  const tick=async()=>{if(running)return;running=true;try{await runJobs();}catch{console.error('FLEET_WORKER_ERROR');}finally{running=false;}};
+  const tick=async()=>{if(running)return;running=true;try{await runJobs(options);}catch{console.error('FLEET_WORKER_ERROR');}finally{running=false;}};
   const unsubscribe=require('./realtime').subscribe(kind=>{if(kind==='refresh')tick();});
   const timer=setInterval(tick,15000);timer.unref();return ()=>{clearInterval(timer);unsubscribe();};
 }

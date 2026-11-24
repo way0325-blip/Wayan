@@ -54,6 +54,7 @@ app.use(
 // 一旦被 express.json() 解析過,原始 body 就拿不回來了。這個路由不需要 CORS、也不用一般 API 限流
 // (呼叫方是 LINE 的伺服器,不是瀏覽器)。
 if (!freePreview) app.use("/api/line", lineWebhookRoutes);
+if(freePreview) app.use('/api/line',require('./routes/previewLineWebhook'));
 
 const allowedOrigins = (process.env.CORS_ORIGIN || "")
   .split(",")
@@ -154,6 +155,11 @@ async function start() {
   }
   await initDb();
   if (freePreview) {
+    if(require('./fleetSheets').credentialsReady()){
+      require('./fleetJobs').startFleetWorker({platformMirrorOnly:true});
+      require('./platformSheets').start();
+    }
+    if(process.env.WAYAN_FREE_SOURCE_SYNC==='yes'){for(const reader of ['routeSourceRefresh','staffingSync','hourlyTasks','personnelSources'])require('./'+reader).start();require('./googleSourceOAuth').status().then(async s=>{console.log('READ_ONLY_GOOGLE_SOURCE_STATUS',JSON.stringify({keyReady:s.keyReady,clientReady:s.clientReady,connected:s.connected,driveReady:s.driveReady}));if(s.connected)await require('./routeSourceRefresh').refresh();}).catch(e=>console.error('READ_ONLY_INITIAL_SYNC_FAILED',e.code||e.status||'SOURCE_READ_FAILED'));}
     app.listen(PORT, () => console.log(`Wayan 獨立驗收環境已啟動，連接埠 ${PORT}`));
     return;
   }
