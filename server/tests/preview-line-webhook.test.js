@@ -8,7 +8,7 @@ test('preview verifies the dedicated bot and replies only to the allowed private
   const tester = 'U' + 'b'.repeat(32);
   const secret = 'synthetic-test-secret';
   Object.assign(process.env, {WAYAN_LINE_TEST_SECRET:secret, WAYAN_LINE_TEST_TOKEN:'old-bot',
-    WAYAN_LINE_TEST_BOT_ID:id, WAYAN_LINE_TEST_REPLY_USER_ID:tester});
+    WAYAN_LINE_TEST_BASIC_ID:'@synthetic', WAYAN_LINE_TEST_REPLY_USER_ID:tester});
   const app = express();
   app.use('/api/line', require('../routes/previewLineWebhook'));
   const server = app.listen(0, '127.0.0.1');
