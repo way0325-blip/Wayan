@@ -470,3 +470,20 @@ test('simultaneous cross-route allocations cannot exceed fleet daily capacity',a
   const total=(await pool.query('SELECT sum(requested_trucks)::int AS n FROM shopee_assignments WHERE fleet_id=$1',[f.id])).rows[0].n;
   assert.strictEqual(total,1);
 });
+
+ test("pickup categories persist, validate, import atomically and preserve legacy routes", async () => {
+ const good={serviceDate:D,origin:'分類測試',destination:'測試終點',vehicleType:'3.5T',requiredTrucks:1};
+ for(const category of ['上收','上收（周六）','上收（周日）']){
+ const created=await api('POST','/api/shopee/routes',{...good,demandCategory:category});
+ assert.strictEqual(created.status,201,JSON.stringify(created.data));assert.strictEqual(created.data.demandCategory,category);
+ const patched=await api('PATCH',`/api/shopee/routes/${created.data.id}`,{note:'保留分類'});
+ assert.strictEqual(patched.status,200);assert.strictEqual(patched.data.demandCategory,category);
+ }
+ const legacy=await api('POST','/api/shopee/routes',good);assert.strictEqual(legacy.data.demandCategory,'');
+ assert.strictEqual((await api('POST','/api/shopee/routes',{...good,demandCategory:'錯誤分類'})).status,400);
+ const before=(await api('GET','/api/shopee/routes')).data.length;
+ assert.strictEqual((await api('POST','/api/shopee/routes/import',{rows:[{...good,demandCategory:'上收'}, {...good,demandCategory:'錯誤分類'}]})).status,400);
+ assert.strictEqual((await api('GET','/api/shopee/routes')).data.length,before);
+ assert.strictEqual((await api('POST','/api/shopee/routes/import',{rows:[{...good,demandCategory:'上收(周六)'}]})).status,201);
+ assert.ok((await api('GET','/api/shopee/routes')).data.some(r=>r.demandCategory==='上收（周六）'));
+ });

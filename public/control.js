@@ -24,7 +24,7 @@
       set('controlFailed',s.failed_events);
       set('controlViolations',s.pendingViolations);
       el('controlIncidentList').innerHTML=incidents.filter(i=>i.status==='待處理').slice(0,12).map(i=>`<div class="incident-row"><strong>${escape(i.kind)}</strong> · ${escape(i.order_id)}<br>${escape(i.detail)}<br><small>司機 ${escape(i.driver_id)} · ${escape(i.vehicle_id||'無車籍')} · ${escape(new Date(i.created_at).toLocaleString('zh-TW',{timeZone:'Asia/Taipei'}))}</small>${isAdmin()?`<br><button class="action secondary small" data-resolve="${escape(i.id)}">登記處理結果</button>`:''}</div>`).join('') || '<div class="empty">目前沒有待處理異常</div>';
-      set('controlError','');
+      set('controlError','');document.dispatchEvent(new CustomEvent('wayan:summary',{detail:s}));
     } catch(err) {set('controlError','更新失敗：'+err.message);}
     finally {refreshing=false;}
   }
@@ -34,7 +34,7 @@
     // Update operational lists without interrupting an open form or another module.
     if (!reloadTimer) reloadTimer=setTimeout(()=>{
       reloadTimer=null;
-      if (active && !document.querySelector('.modal:not(.hidden)') && el('dashboard').classList.contains('active')) loadAll().catch(()=>{});
+      if (active && !document.querySelector('.modal:not(.hidden)') && el('dashboard').classList.contains('active')) window.WayanViewUpdates?.request('dashboard-lists',()=>loadAll().catch(()=>{}));
     },30000);
   }
   async function connect() {
@@ -54,20 +54,29 @@
           if(frame.includes('event: expired')) {logout();return;}
           if(frame.includes('event: offline')) sync('offline','同步中斷 · 正在重連');
           if(frame.includes('event: ready')) {sync('online','● 即時同步已連線');scheduleRefresh();document.dispatchEvent(new Event('wayan:refresh'));}
-          if(frame.includes('event: refresh')) {scheduleRefresh();document.dispatchEvent(new Event('wayan:refresh'));}
+          if(frame.includes('event: refresh')) {scheduleRefresh();let detail={};try{detail=JSON.parse(frame.split('data: ')[1]||'{}');}catch{}document.dispatchEvent(new CustomEvent('wayan:refresh',{detail}));}
         }
       }
     } catch(err) {if(err.name==='AbortError') return;}
     if(active) {sync('offline','同步中斷 · 3 秒後重連');reconnect=setTimeout(connect,3000);}
   }
+  let botDirectory=[];
+  function renderBotDrivers(){
+    const previous=el('botDriver').value,q=(el('botDriverSearch')?.value||'').trim().toLowerCase(),status=el('botDriverStatus')?.value||'';
+    const list=botDirectory.filter(d=>(!q||[d.driverCode,d.name,d.warehouse].join(' ').toLowerCase().includes(q))&&(!status||(status==='bound'?d.bound:status==='review'?d.problems.length:!d.bound)));
+    el('botDriver').innerHTML='<option value="">請選擇司機</option>'+list.map(d=>'<option value="'+escape(d.key)+'">'+escape(d.driverCode+' · '+d.name+' · '+(d.warehouse||'未分類')+' · '+(d.bound?'已綁定':d.problems.length?'待核對':'未綁定'))+'</option>').join('');
+    if(list.some(d=>d.key===previous))el('botDriver').value=previous;
+    set('botDirectoryCount','顯示 '+list.length+' / 全部 '+botDirectory.length+' 位；已綁定 '+botDirectory.filter(d=>d.bound).length+' 位。');
+  }
+  document.addEventListener('input',e=>{if(e.target.id==='botDriverSearch')renderBotDrivers();});
+  document.addEventListener('change',e=>{if(e.target.id==='botDriverStatus')renderBotDrivers();});
   async function loadBot() {
     if(!active || !isAdmin()) return;
     try {
-      const [s,list]=await Promise.all([api('/api/line/admin/status'),api('/api/drivers')]);
+      const [s,list,q]=await Promise.all([api('/api/line/admin/status'),api('/api/line/admin/drivers'),api('/api/line/admin/quota').catch(e=>({error:e.message}))]);
+      set('botQuota',q.error?q.error:'API本月上限 '+(q.limit??'依LINE方案')+'／已計量 '+q.used+'／剩餘 '+(q.remaining??'依方案')+'｜'+new Date(q.retrievedAt).toLocaleString('zh-TW',{timeZone:'Asia/Taipei'}));
       set('botConfigured',s.configured?'測試頻道已設定；仍需實際手機驗收':'尚未設定測試頻道金鑰');
-      const previous=el('botDriver').value;
-      el('botDriver').innerHTML=list.map(d=>`<option value="${escape(d.id)}">${escape(d.name)} (${escape(d.id)})</option>`).join('');
-      if(list.some(d=>d.id===previous)) el('botDriver').value=previous;
+      botDirectory=list.records;renderBotDrivers();
       el('botBindings').innerHTML=s.bindings.map(b=>`<div class="incident-row">${escape(b.name)} · ${escape(b.driver_id)} <button class="action secondary small" data-unbind="${escape(b.driver_id)}">解除綁定</button></div>`).join('')||'<div class="empty">尚無司機綁定</div>';
       el('botEvents').innerHTML=s.events.length?`<table><thead><tr><th>接收時間</th><th>處理</th><th>回覆</th><th>嘗試次數</th><th>操作</th></tr></thead><tbody>${s.events.map(e=>`<tr><td>${escape(new Date(e.received_at).toLocaleString('zh-TW',{timeZone:'Asia/Taipei'}))}</td><td>${escape(({pending:'待處理',processed:'完成',failed:'失敗'})[e.status])}</td><td>${escape(({pending:'等待',sent:'已送出',failed:'失敗',skipped:'無需回覆'})[e.delivery_status])}</td><td>${escape(e.attempts)}</td><td>${e.status==='failed'?`<button class="action secondary small" data-retry="${escape(e.event_id)}">重試處理</button>`:escape(e.error_code||'—')}</td></tr>`).join('')}</tbody></table>`:'<div class="empty">尚未收到 LINE 事件</div>';
       set('botError','');
@@ -83,7 +92,12 @@
     if(target.id==='botGenerate') action(async()=>{
       target.disabled=true;
       try {
-        const r=await api('/api/line/admin/binding-codes',{method:'POST',body:JSON.stringify({driverId:el('botDriver').value})});
+        const d=botDirectory.find(v=>v.key===el('botDriver').value);
+        if(!d)throw new Error('請先選擇司機');
+        if(d.bound)throw new Error('此司機已綁定，請先核對原綁定');
+        if(d.problems.length)throw new Error('名冊待核對：'+d.problems.join('、'));
+        if(!confirm('請確認已核對 '+d.name+' 的司機 ID '+d.driverCode+' 與本人身分，綁定指令只交給本人。'))return;
+        const r=await api(d.source==='owned'?'/api/line/admin/owned-binding-codes':d.source==='roster'?'/api/line/admin/roster-binding-codes':'/api/line/admin/binding-codes',{method:'POST',body:JSON.stringify(['roster','owned'].includes(d.source)?{driverCode:d.driverCode,sourceRow:d.sourceRow,verified:true}:{driverId:d.runtimeId})});
         set('botCode',`請只交給指定司機，在私人對話輸入：\n綁定 ${r.code}\n有效至 ${new Date(r.expiresAt).toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei'})}，舊碼已失效。`);
         set('botError','');
       } finally {target.disabled=false;}
@@ -103,7 +117,7 @@
   document.addEventListener('visibilitychange',()=>{if(active && !document.hidden) refresh();});
   window.WayanControl={
     start(){if(active) return;active=true;sync('connecting','正在連接即時同步');refresh();connect();},
-    stop(){active=false;controller?.abort();clearTimeout(reconnect);clearTimeout(refreshTimer);clearTimeout(reloadTimer);refreshTimer=null;reloadTimer=null;set('botCode','');},
+    stop(){botDirectory=[];if(el('botDriver'))el('botDriver').innerHTML='';set('botDirectoryCount','');active=false;controller?.abort();clearTimeout(reconnect);clearTimeout(refreshTimer);clearTimeout(reloadTimer);refreshTimer=null;reloadTimer=null;set('botCode','');},
     refresh,
   };
 })();

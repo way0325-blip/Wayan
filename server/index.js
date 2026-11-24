@@ -65,7 +65,11 @@ app.use(
   })
 );
 
+app.use('/api/excel',express.json({limit:'6mb'}));
 app.use('/api/store-delivery',express.json({limit:'2mb'}));
+app.use('/api/source-catalog',express.json({limit:'3mb'}));
+app.use('/api/pickup-routes',express.json({limit:'3mb'}));
+app.use('/api/route-carriers',express.json({limit:'3mb'}));
 app.use(express.json({ limit: "100kb" }));
 
 // 全站 API 速率限制,避免暴力嘗試或濫用
@@ -73,6 +77,7 @@ const apiLimiter = rateLimit({
   skip: req => req.method === 'GET' && req.path.startsWith('/control/'),
   windowMs: 15 * 60 * 1000,
   limit: 300,
+  message:{error:'操作過於頻繁，請稍後重試'},
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -86,7 +91,11 @@ const loginLimiter = rateLimit({
   message: { error: "登入嘗試次數過多,請 15 分鐘後再試" },
 });
 
-app.use("/api", apiLimiter);
+const readApiLimiter=rateLimit({
+  skip:req=>req.path.startsWith('/control/'),windowMs:15*60*1000,limit:600,
+  standardHeaders:true,legacyHeaders:false,message:{error:'查詢過於頻繁，請稍後再更新'},
+});
+app.use('/api',(req,res,next)=>req.method==='GET'?readApiLimiter(req,res,next):apiLimiter(req,res,next));
 app.use("/api/auth/login", loginLimiter);
 
 app.use("/api/auth", authRoutes);
@@ -109,6 +118,17 @@ app.use('/api/penalty-rules',require('./routes/penaltyRules'));
 app.use('/api/penalty-cases',require('./routes/penaltyCases'));
 app.use('/api/store-delivery',require('./routes/storeDelivery'));
 app.use('/api/shopee-live',require('./routes/shopeeLive'));
+app.use('/api/google-sources',require('./routes/googleSources'));
+app.use('/api/excel',require('./routes/excelFiles'));
+app.use('/api/source-catalog',require('./routes/sourceCatalog'));
+app.use('/api/pickup-routes',require('./routes/pickupRoutes'));
+app.use('/api/operation-sources',require('./routes/operationSources'));
+app.use('/api/weekly-staffing',require('./routes/weeklyStaffing'));
+app.use('/api/route-settings',require('./routes/routeSettings'));
+app.use('/api/platform-sheets',require('./routes/platformSheets'));
+app.use('/api/route-carriers',require('./routes/carrierMappings'));
+app.use('/api/weekly-routes',require('./routes/weeklyRoutes'));
+app.use('/api/driver-routes',require('./routes/driverRoutes'));
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 app.use('/api', (req,res)=>res.status(404).json({error:'找不到 API'}));
@@ -132,13 +152,26 @@ async function start() {
     throw new Error('測試平台啟動需要獨立的 JWT_SECRET（至少 32 字）及 ADMIN_PASSWORD（至少 12 字），禁止沿用展示密碼');
   }
   await initDb();
+  try{const c=await require('./googleSourceOAuth').status();console.log('GOOGLE_SOURCE_CONFIG_STATUS',JSON.stringify({keyReady:c.keyReady,clientReady:c.clientReady,configurationSource:c.configurationSource,connected:c.connected}));}catch{console.error('GOOGLE_SOURCE_CONFIG_STATUS_FAILED');}
+  try {const demo=await require('./stagingDemoOrders').setupStagingDemo(require('./db').pool);if(demo.status!=='disabled')console.log('STAGING_DEMO_ORDERS',JSON.stringify(demo));}catch(err){console.error('STAGING_DEMO_ORDERS_FAILED',err.code||'SETUP_FAILED');}
   try {
     const setup=await require('./stagingFleetBootstrap').setupStagingFleet(require('./db').pool);
     if(setup.status!=='disabled')console.log('STAGING_FLEET_SETUP',JSON.stringify(setup));
   } catch(err) { console.error('STAGING_FLEET_SETUP_FAILED',err.code||'SETUP_FAILED'); }
+  try{const checkins=await require('./stagingCheckinSetup').setupStagingCheckins(require('./db').pool);if(checkins.status!=='disabled')console.log('STAGING_CHECKIN_SETUP',JSON.stringify(checkins));}catch(err){console.error('STAGING_CHECKIN_SETUP_FAILED',err.aliasError||err.dispatchStatus?err.message:(err.code||err.name||'SETUP_FAILED'));}
+  try{const result=await require('./stagingRouteAcceptance').setup(require('./db').pool);if(result.status!=='disabled')console.log('STAGING_ROUTE_ACCEPTANCE',JSON.stringify(result));}catch(e){console.error('STAGING_ROUTE_ACCEPTANCE_FAILED',e.code||'SETUP_FAILED');}
   require('./fleetJobs').startFleetWorker();
+  require('./platformSheets').start();
+  require('./routeSheets').start();
+  require('./routeSourceRefresh').start();
+  require('./staffingSync').start();
+  require('./hourlyTasks').start();
+  require('./personnelSources').start();
   app.listen(PORT, () => {
     console.log(`港區星際運輸調度中心伺服器已啟動: http://localhost:${PORT}`);
+    require('./sourceCatalogBootstrap').bootstrapSourceCatalog(require('./db').pool)
+      .then(async result=>{if(process.env.WAYAN_ENV==='staging'){try{await require('./routeSourceRefresh').refresh();}catch(e){console.error('ROUTE_SOURCE_REFRESH_FAILED',e.code||e.status||'SOURCE_READ_FAILED');}try{await require('./realFleetRegistry').sync();}catch(e){console.error('REAL_FLEET_REGISTRY_FAILED',e.code||'REGISTRY_FAILED');}}if(result.length)console.log('SOURCE_CATALOG_INITIAL_IMPORT',JSON.stringify(result));if(process.env.WAYAN_ENV==='staging'){await require('./rosterSheets').ensureInitial();require('./rosterSheets').startPolling();await require('./fleetOperations').enqueueSheet(require('./db').pool,'attendance','current');require('./attendanceSheets').start();}})
+      .catch(()=>console.error('SOURCE_CATALOG_INITIAL_IMPORT_FAILED'));
   });
 }
 

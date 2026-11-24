@@ -158,18 +158,18 @@ test("attendance: set/overwrite/clear a day for a dispatcher, list only shows ac
   const badStatus = await call("PUT", "/api/attendance", adminAuth, { staffType: "dispatcher", staffId: active.data.id, date: "2026-10-05", status: "摸魚" });
   assert.strictEqual(badStatus.status, 400);
 
-  const setLeave = await call("PUT", "/api/attendance", adminAuth, { staffType: "dispatcher", staffId: active.data.id, date: "2026-10-05", status: "休假" });
+  const setLeave = await call("PUT", "/api/attendance", adminAuth, { staffType: "dispatcher", staffId: active.data.id, date: "2026-10-05", status: "休假", expectedVersion:null });
   assert.strictEqual(setLeave.status, 200);
   assert.strictEqual(setLeave.data.status, "休假");
 
-  const overwrite = await call("PUT", "/api/attendance", adminAuth, { staffType: "dispatcher", staffId: active.data.id, date: "2026-10-05", status: "出勤" });
+  const overwrite = await call("PUT", "/api/attendance", adminAuth, { staffType: "dispatcher", staffId: active.data.id, date: "2026-10-05", status: "出勤", expectedVersion:setLeave.data.version });
   assert.strictEqual(overwrite.data.status, "出勤");
 
   const afterSet = await call("GET", "/api/attendance?type=dispatcher&month=2026-10", adminAuth);
   assert.strictEqual(afterSet.data.records.length, 1);
   assert.strictEqual(afterSet.data.records[0].status, "出勤");
 
-  const cleared = await call("PUT", "/api/attendance", adminAuth, { staffType: "dispatcher", staffId: active.data.id, date: "2026-10-05" });
+  const cleared = await call("PUT", "/api/attendance", adminAuth, { staffType: "dispatcher", staffId: active.data.id, date: "2026-10-05", expectedVersion:overwrite.data.version });
   assert.strictEqual(cleared.status, 200);
   assert.strictEqual(cleared.data.status, null);
 
@@ -181,10 +181,10 @@ test("attendance works for driver type too, and rejects unknown staff id", async
   const drivers = (await call("GET", "/api/drivers", adminAuth)).data;
   const driverId = drivers[0].id;
 
-  const unknown = await call("PUT", "/api/attendance", adminAuth, { staffType: "driver", staffId: "NOPE", date: "2026-10-01", status: "曠職" });
+  const unknown = await call("PUT", "/api/attendance", adminAuth, { staffType: "driver", staffId: "NOPE", date: "2026-10-01", status: "曠職", expectedVersion:null });
   assert.strictEqual(unknown.status, 404);
 
-  const ok = await call("PUT", "/api/attendance", adminAuth, { staffType: "driver", staffId: driverId, date: "2026-10-01", status: "曠職" });
+  const ok = await call("PUT", "/api/attendance", adminAuth, { staffType: "driver", staffId: driverId, date: "2026-10-01", status: "曠職", expectedVersion:null });
   assert.strictEqual(ok.status, 200);
 
   const view = await call("GET", "/api/attendance?type=driver&month=2026-10", adminAuth);

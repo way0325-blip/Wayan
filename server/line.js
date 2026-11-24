@@ -26,7 +26,7 @@ function verifySignature(rawBody, signature) {
 // 超過長度就切成多則,每則保留在同一個自然段落(空行)的邊界上,盡量不切斷一筆訂單
 function chunkText(text) {
   if (text.length <= MAX_LEN) return [text];
-  const blocks = text.split("\n\n");
+  const blocks = text.split("\n\n").flatMap(block=>{const parts=[];while(block.length>MAX_LEN){let end=MAX_LEN;if(/[\uD800-\uDBFF]/.test(block[end-1]))end--;parts.push(block.slice(0,end));block=block.slice(end);}if(block)parts.push(block);return parts;});
   const chunks = [];
   let cur = "";
   for (const b of blocks) {
@@ -55,8 +55,10 @@ async function callLineApi(path, body, retryKey) {
   });
   if (res.status===409 && retryKey && res.headers?.get('x-line-accepted-request-id')) return;
   if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`LINE API ${path} 失敗(${res.status}):${detail.slice(0, 300)}`);
+    await res.text().catch(() => "");
+    const code=res.status===429?'LINE_RATE_LIMITED':res.status===401||res.status===403?'LINE_AUTH_REJECTED':'LINE_API_REJECTED';
+    console.error('LINE_API_FAILURE',JSON.stringify({path,status:res.status,code}));
+    throw Object.assign(new Error(`LINE API ${path} 失敗(${res.status})`),{code,httpStatus:res.status});
   }
 }
 
@@ -72,7 +74,9 @@ async function pushMessage(to, text, options={}) {
   // LINE 一次最多 5 則訊息,超過的話分批呼叫
   for (let i = 0; i < chunks.length; i += 5) {
     const messages = chunks.slice(i, i + 5).map((t) => ({ type: "text", text: t }));
-    await callLineApi("/message/push", { to, messages }, options.retryKey);
+    const digest=i>0&&options.retryKey?crypto.createHash('sha256').update(options.retryKey+':batch:'+i/5).digest('hex'):null;
+    const retryKey=digest?digest.slice(0,8)+'-'+digest.slice(8,12)+'-4'+digest.slice(13,16)+'-a'+digest.slice(17,20)+'-'+digest.slice(20,32):options.retryKey;
+    await callLineApi("/message/push", { to, messages }, retryKey);
   }
 }
 
@@ -128,7 +132,15 @@ async function pushDispatchList(orders, drivers, vehicles, opts = {}) {
   return { sentTo, text };
 }
 
+let quotaCache=null;
+async function getMessageQuota(fetcher=fetch){
+ if(!isConfigured())throw Object.assign(Error('LINE測試頻道尚未設定'),{code:'LINE_NOT_CONFIGURED'});
+ if(fetcher===fetch&&quotaCache&&Date.now()-quotaCache.at<60000)return quotaCache.data;
+ const get=async path=>{const r=await fetcher(API_BASE+path,{method:'GET',signal:AbortSignal.timeout(4000),headers:{Authorization:'Bearer '+ACCESS_TOKEN}});if(!r.ok)throw Object.assign(Error('LINE額度讀取失敗'),{code:'LINE_QUOTA_READ_FAILED'});return r.json();};
+ const [quota,usage]=await Promise.all([get('/message/quota'),get('/message/quota/consumption')]);const limit=quota.type==='limited'&&Number.isFinite(quota.value)?quota.value:null;if(!Number.isFinite(usage.totalUsage))throw Object.assign(Error('LINE額度資料格式待核對'),{code:'LINE_QUOTA_FORMAT'});const data={type:quota.type,limit,used:usage.totalUsage,remaining:limit===null?null:Math.max(0,limit-usage.totalUsage),retrievedAt:new Date().toISOString(),notice:'這是LINE API本月上限，付費方案可能包含加購上限；Reply API不計入，主動Push依收件人數計量。'};if(fetcher===fetch)quotaCache={at:Date.now(),data};return data;
+}
 module.exports = {
+  getMessageQuota,
   isConfigured,
   verifySignature,
   replyMessage,
